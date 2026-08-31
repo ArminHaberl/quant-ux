@@ -282,6 +282,9 @@ export default {
 
 		_showRadioTable(model) {
 			this._renderDataBinding(model);
+			var validation = this.getValidationModel(model);
+			this._renderRequired(validation);
+			this._renderValidationLabels(validation, model);
 		},
 
 		_showSwitch (model){

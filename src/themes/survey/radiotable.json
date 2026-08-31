@@ -67,6 +67,12 @@
 		"hover" : {
 			"borderColor": "@form-border-color:hover",
 			"background": "@form-background:hover"
+		},
+		"error": {
+			"borderColor": "@form-border-color:error",
+			"background": "@form-background:error",
+			"color": "@form-border-color:error",
+			"colorButton": "@form-border-color:error"
 		}
 	}
 ]

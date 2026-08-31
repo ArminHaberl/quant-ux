@@ -20,7 +20,8 @@ export default {
   data() {
     return {
       value: {},
-      styleArrowColor: ''
+      styleArrowColor: '',
+      validationActive: false
     };
   },
   computed: {
@@ -49,6 +50,8 @@ export default {
       this._radioNodes = []
       this._hookNodes = []
       this._rowLabelNodes = []
+      this._rowLabels = {}
+      this._rowHooks = {}
     },
 
     async moveUp (i, e) {
@@ -136,6 +139,8 @@ export default {
       const tbody = this.db.tbody().build(table)
       this._rowKeys = []
       this._rowRadios = {}
+      this._rowLabels = {}
+      this._rowHooks = {}
       const header = data[0]
       for (let i = 1; i < data.length; i++) {
         const row = data[i]
@@ -155,6 +160,8 @@ export default {
         this.db.span("", rowName).build(labelTD);
         this._rowLabelNodes.push(labelTD);
         this._rowKeys[i] = rowName
+        this._rowLabels[rowName] = labelTD
+        this._rowHooks[rowName] = []
         this.registerRowRadio(rowName)
 
         for (let j=1; j < header.length; j++) {
@@ -173,6 +180,7 @@ export default {
           this._hookNodes.push(hook)
           this._paddingNodes.push(cntr)
           this._shadowNodes.push(radio)
+          this._rowHooks[rowName].push(hook)
 
  
           this._rowRadios[rowName][colName] = radio
@@ -265,11 +273,120 @@ export default {
       }
     },
 
+    _validateValue (value) {
+      const validation = this.model.props.validation;
+      if (validation && validation.required) {
+        const data = this.model.props.data;
+        if (data) {
+          const expected = data.length - 1;
+          return Object.keys(value || {}).length >= expected;
+        }
+      }
+      return true;
+    },
+
+    isValid (showError) {
+      return this.validate(this.value, showError);
+    },
+
+    validate (value, showError, forceValidation) {
+      if (showError == undefined) {
+        showError = true
+      }
+      const validation = this.model.props.validation
+      if (validation) {
+        if (showError) {
+          this.validationActive = true
+        }
+        const isValid = this._validateValue(value)
+        if (showError) {
+          if (isValid) {
+            if (this.lastValidation != isValid || forceValidation) {
+              this.hideRowErrors()
+              this.emitValidationOK(value)
+            }
+          } else {
+            this.showRowErrors()
+            if (this.lastValidation != isValid || forceValidation) {
+              this.emitValidationError(value)
+            }
+          }
+        }
+        this.lastValidation = isValid
+      } else {
+        this.lastValidation = true
+      }
+      return this.lastValidation
+    },
+
+    getUnansweredRows () {
+      const rows = []
+      const data = this.model.props.data || []
+      for (let i = 1; i < data.length; i++) {
+        const rowName = data[i][0]
+        const answered = this.value && (this.value[rowName] || this.value[sanitizeObjectKey(rowName)])
+        if (!answered) {
+          rows.push(rowName)
+        }
+      }
+      return rows
+    },
+
+    showRowErrors () {
+      this.clearRowErrors()
+      const error = this.model.error || {}
+      this.getUnansweredRows().forEach(rowName => {
+        const label = this._rowLabels[rowName]
+        if (label) {
+          css.add(label, "MatcWidgetTypeRadioTableRowError")
+          if (error.color) {
+            label.style.color = error.color
+          }
+        }
+        const radios = this._rowRadios[rowName] || {}
+        for (let col in radios) {
+          const radio = radios[col]
+          css.add(radio, "MatcWidgetTypeRadioTableRowError")
+          if (error.background) {
+            radio.style.background = error.background
+          }
+        }
+        const hooks = this._rowHooks[rowName] || []
+        hooks.forEach(hook => {
+          if (error.colorButton) {
+            hook.style.background = error.colorButton
+          }
+        })
+      })
+    },
+
+    clearRowErrors () {
+      const style = this.style || {}
+      this._rowLabelNodes.forEach(label => {
+        css.remove(label, "MatcWidgetTypeRadioTableRowError")
+        label.style.color = style.color || ''
+      })
+      this._radioNodes.forEach(radio => {
+        css.remove(radio, "MatcWidgetTypeRadioTableRowError")
+        radio.style.background = style.background || ''
+      })
+      this._hookNodes.forEach(hook => {
+        hook.style.background = style.colorButton || ''
+      })
+    },
+
+    hideRowErrors () {
+      this.clearRowErrors()
+    },
+
 
     onChange(e) {
       this.stopEvent(e);
       this.emitDataBinding(this.value);
       this.emitStateChange("select", this.value, e);
+      if (this.validationActive) {
+        this.validate(this.value, true);
+      }
     }
   },
   mounted() {

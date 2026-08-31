@@ -84,8 +84,8 @@ export default {
 
 			hasLogic2: ["LogicOr", "Rest", "Script", "AudioLogic"],
 
-			hasErrorViewMode : ["TextBox", "Password", "CheckBox", "Switch", "DropDown", "MobileDropDown", "DateDropDown", 
-								"TypeAheadTextBox", "CheckBoxGroup", "RadioGroup", 'LabeledCheckBox', 'LabeledRadioBox', 'LabeledTextBox', 'LabeledTextArea'],
+		hasErrorViewMode : ["TextBox", "Password", "CheckBox", "Switch", "DropDown", "MobileDropDown", "DateDropDown", 
+							"TypeAheadTextBox", "CheckBoxGroup", "RadioGroup", 'LabeledCheckBox', 'LabeledRadioBox', 'LabeledTextBox', 'LabeledTextArea', 'RadioTable'],
 
 			hasFocusViewMode : ["TextBox", "Password", "DropDown", "MobileDropDown", "TextArea", 
 								"TypeAheadTextBox", 'LabeledTextBox', 'LabeledTextArea', 'Chat', 'ChatTextBox'],
