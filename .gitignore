@@ -23,3 +23,11 @@ yarn-error.log*
 *.sln
 *.sw?
 ai.js
+
+# data
+docker/data
+docker/quant-ux-data
+
+# secrets
+.env
+docker/.env
