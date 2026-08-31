@@ -1,8 +1,12 @@
 
 
 
+QUX_PUBLIC_PATH ?= /
+
+
+
 build-prod:
-	docker build --target runtime-production -t quant-ux .
+	docker build --build-arg QUX_PUBLIC_PATH=$(QUX_PUBLIC_PATH) --target runtime-production -t quant-ux .
 
 build-dev:
 	docker build --target runtime-development -t quant-ux .

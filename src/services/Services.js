@@ -25,7 +25,7 @@ class Services {
 
     async initConfig () {
         return new Promise((resolve, reject) => {
-            fetch('/config.json', {
+            fetch(`${process.env.BASE_URL}config.json`, {
                 method: 'get',
                 credentials: "same-origin"
             }).then((res) => {

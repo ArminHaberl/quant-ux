@@ -15,6 +15,9 @@ FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS builder
 USER node
 WORKDIR /home/node
 
+ARG QUX_PUBLIC_PATH
+ENV QUX_PUBLIC_PATH=${QUX_PUBLIC_PATH}
+
 COPY --chown=node:node [".", "./"]
 COPY --chown=node:node --from=production-dependencies ["/home/node/node_modules", "node_modules/"]
 

@@ -1,5 +1,6 @@
 var path = require('path');
 module.exports = {
+  publicPath: process.env.QUX_PUBLIC_PATH || '/',
   devServer: {
     proxy: {
       '^/rest': {
