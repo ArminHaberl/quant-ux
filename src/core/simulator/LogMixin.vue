@@ -6,6 +6,7 @@
 import lang from 'dojo/_base/lang'
 import topic from 'dojo/topic'
 import Services from 'services/Services'
+import { sanitizeStateValue } from 'common/SanitizeUtil'
 
 export default {
 	name: 'RestMixin',
@@ -63,7 +64,7 @@ export default {
 				if(widgetEvent.type || widgetEvent.value){
 					event.state ={
 						type : widgetEvent.type,
-						value : widgetEvent.value,
+						value : sanitizeStateValue(widgetEvent.value),
 					};
 
 					if (widgetEvent.hidden) {

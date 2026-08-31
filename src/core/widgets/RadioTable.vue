@@ -8,6 +8,7 @@ import DojoWidget from "dojo/DojoWidget";
 import UIWidget from "core/widgets/UIWidget";
 //import {iconDOM} from 'page/QIconUtil'
 import DomBuilder from "common/DomBuilder";
+import { sanitizeObjectKey } from "common/SanitizeUtil";
 import css from 'dojo/css'
 // import touch from "dojo/touch";
 // import on from "dojo/on";
@@ -145,7 +146,7 @@ export default {
         this.db.span("", rowName).build(labelTD);
         this._rowLabelNodes.push(labelTD);
         this._rowKeys[i] = rowName
-        this._rowRadios[rowName] = {}
+        this.registerRowRadio(rowName)
 
         for (let j=1; j < header.length; j++) {
           const colName = header[j]
@@ -165,12 +166,23 @@ export default {
           this._shadowNodes.push(radio)
 
  
-          this._rowRadios[row[0]][colName] = radio
+          this._rowRadios[rowName][colName] = radio
         }
 
       }
 
       return tbody
+    },
+
+    registerRowRadio (rowName) {
+      const radios = {}
+      this._rowRadios[rowName] = radios
+      /**
+       * Persisted event states have their keys sanitized for mongo. Register
+       * the same map under the sanitized key as well, so replayed states
+       * can be looked up.
+       */
+      this._rowRadios[sanitizeObjectKey(rowName)] = radios
     },
 
     renderChecked (value) {

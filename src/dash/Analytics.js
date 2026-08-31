@@ -2,6 +2,7 @@ import lang from '../dojo/_base/lang'
 import DataFrame from '../common/DataFrame'
 import Grouping from '../common/Grouping'
 import PerformanceMonitor from '../core/PerformanceMonitor'
+import { sanitizeObjectKey } from '../common/SanitizeUtil'
 
 
 export default class {
@@ -87,29 +88,29 @@ export default class {
 							})
 						}
 					}	
-					else if (w.type === 'RadioTable') {
-						const data = w.props.data
-						if (data) {
-				
-							widgetColums[w.id] = []
-							data.forEach((row, i) => {
-								if (i > 0 && row[0]) {
-									const col = row[0]
-									widgetColums[w.id].push(col)
+				else if (w.type === 'RadioTable') {
+					const data = w.props.data
+					if (data) {
+			
+						widgetColums[w.id] = []
+						data.forEach((row, i) => {
+							if (i > 0 && row[0]) {
+								const col = sanitizeObjectKey(row[0])
+								widgetColums[w.id].push(col)
 
-									result.cols.push({
-										hidden: false,
-										key: col,
-										label: col,
-										group: w.name,
-										type: 'data',
-										id: w.id
-									})
-								}
-							})
-					
-						}	
-					} else {
+								result.cols.push({
+									hidden: false,
+									key: col,
+									label: row[0],
+									group: w.name,
+									type: 'data',
+									id: w.id
+								})
+							}
+						})
+				
+					}	
+				} else {
 						widgetColumnNames[w.id] = w.name
 						result.cols.push({
 							hidden: false,
