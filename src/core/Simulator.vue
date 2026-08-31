@@ -300,7 +300,7 @@
 			  this.logger.log(1,"setModel","enter > step:" + this.step, this._splashTime );
 			  if (model == null) {
 				  this.logger.error("setModel","exit > No model");
-				  location.href = location.protocol + "//" + location.host + "/404.html";
+				  location.href = location.protocol + "//" + location.host + (process.env.BASE_URL || '/').replace(/\/+$/, '') + "/404.html";
 			  } else {
 				  this.logger.log(1,"setModel","enter >" + model.id + " > splash : "+ this._splashTime);
 				  this.model = model;

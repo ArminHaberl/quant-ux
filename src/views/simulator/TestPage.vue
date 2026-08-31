@@ -268,7 +268,7 @@ export default {
 				this.preloadImages(model)
 			} else {
 				this.domNode.innerHTML="Sorry, the invitation is not valid...";
-				location.href = location.protocol + "//" + location.host + "/404.html";
+				location.href = location.protocol + "//" + location.host + (process.env.BASE_URL || '/').replace(/\/+$/, '') + "/404.html";
 			}
 		},
 

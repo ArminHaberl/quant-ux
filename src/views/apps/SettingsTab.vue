@@ -95,7 +95,8 @@ export default {
   },
   computed: {
     base() {
-      return location.protocol + "//" + location.host;
+      const path = (process.env.BASE_URL || '/').replace(/\/+$/, '');
+      return location.protocol + "//" + location.host + path;
     },
     iframe() {
       if (this.app) {
