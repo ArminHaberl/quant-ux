@@ -17,12 +17,12 @@ services:
       - QUX_KEYCLOAK_REALM=
       - QUX_KEYCLOAK_CLIENT=
       - QUX_KEYCLOAK_URL=
-      - QUX_WS_URL=ws://localhost:8086        # change to where the websocket server is deployed for external access
+      - QUX_WS_URL=${QUX_WS_URL:-ws://localhost:8086}        # websocket URL, set real value in docker/.env
     links:
       - mongo
       - qux-be
     ports:
-      - 8082:8082        # change the left side port if your host machine already has 8082 in use
+      - 127.0.0.1:8082:8082        # only reachable via nginx
     depends_on:
       - qux-be
   qux-be:
@@ -33,7 +33,7 @@ services:
       - ./quant-ux-data:/app-data
     environment:
       - QUX_DEBUG=true        # use DebugMailClient: prints mails to log instead of SMTP (works around qux-java 5.1.17 mail init crash)
-      - QUX_HTTP_HOST=http://quant-ux-frontend:8082        # this is the path the backend uses to talk to the front end
+      - QUX_HTTP_HOST=${QUX_HTTP_HOST:-http://localhost:8082}        # public URL used in mails/links, set real value in docker/.env
       - QUX_HTTP_PORT=8080        # This is the port the backend will use
       - QUX_MONGO_DB_NAME=quantux        # the database / collection name in mongodb
       - QUX_MONGO_TABLE_PREFIX=quantux        # table / document prefix in mongodb
@@ -60,7 +60,7 @@ services:
       - QUX_SERVER=http://quant-ux-backend:8080/
       - QUX_SERVER_PORT=8086
     ports:
-      - 8086:8086
+      - 127.0.0.1:8086:8086
     links:
       - qux-be
     depends_on:
