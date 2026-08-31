@@ -142,6 +142,15 @@ export default {
         const rowName = row[0]
         const tr = this.db.tr().build(table)
 
+        const isEven = (i % 2 === 0)
+        if (isEven && (this.style.evenRowBackground || this.style.evenRowColor)) {
+          tr.style.background = this.style.evenRowBackground
+          tr.style.color = this.style.evenRowColor
+        } else {
+          tr.style.background = this.style.background
+          tr.style.color = this.style.color
+        }
+
         const labelTD = this.db.td("MatcWidgetTypeRadioTableLabel").build(tr)
         this.db.span("", rowName).build(labelTD);
         this._rowLabelNodes.push(labelTD);

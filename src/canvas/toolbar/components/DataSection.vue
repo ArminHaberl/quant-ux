@@ -538,14 +538,54 @@ export default {
 			this._renderInputDropDown("# Elements", model, [1, 2, 3, 4, 5, 10], "max", true)
 		},
 
-		_showRadioTable(model) {
-			this._setSectionLabel("Radio Table");
-			this._renderButton("Values", "DataTable", "_renderTableDialog");
-			this._renderRandom(model)
-			this._renderInputDropDown("Label Width",model, [64, 96, 128, 196, 256], "labelWidth", false);
-			this._renderInputDropDown("Radio Size",model, [8, 12, 16, 24, 32, 40], "radioSize", false);	
-			this._renderColor('Checked Button','<span class="MatcIconCircle"></span>',model.style.colorButton, "colorButton" );		
-		},
+	_showRadioTable(model) {
+		this._setSectionLabel("Radio Table");
+		this._renderButton("Values", "DataTable", "_renderTableDialog");
+		this._renderRandom(model)
+		this._renderInputDropDown("Label Width",model, [64, 96, 128, 196, 256], "labelWidth", false);
+		this._renderInputDropDown("Radio Size",model, [8, 12, 16, 24, 32, 40], "radioSize", false);	
+		this._renderColor('Checked Button','<span class="MatcIconCircle"></span>',model.style.colorButton, "colorButton" );		
+
+		let style = model.style
+
+		this._renderDropDownTree("Odd Rows", "Color", [
+			{
+				label: "Background",
+				type: "color",
+				value: style.background,
+				key:'background',
+				icon: 'Color',
+				isStyle: true
+			},
+			{
+				label: "Color",
+				type: "color",
+				value: style.color,
+				key:'color',
+				icon: 'mdi mdi-format-text',
+				isStyle: true
+			}
+		])
+
+		this._renderDropDownTree("Even Rows", "Color", [
+			{
+				label: "Background",
+				type: "color",
+				value: style.evenRowBackground,
+				key:'evenRowBackground',
+				icon: 'Color',
+				isStyle: true
+			},
+			{
+				label: "Color",
+				type: "color",
+				value: style.evenRowColor,
+				key:'evenRowColor',
+				icon: 'mdi mdi-format-text',
+				isStyle: true
+			}
+		])
+	},
 
 		_showRadioGroup (model){
 			this._setSectionLabel("Radio Group");
