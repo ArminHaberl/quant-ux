@@ -174,8 +174,7 @@ export default {
 			 * depending on the mode, we have to use different REST end points :-(
 			 */
 			if(this.qr || this.hash){
-				const res = await Services.getModelService().saveEvent(this.model.id, this.hash, event)
-				this.onSaved(res)
+				await this.saveEventWithRetry(event)
 			}
 			event = false
 
@@ -183,6 +182,22 @@ export default {
 			 * we force to send the mouse!!
 			 */
 			this.sendMouse();
+		},
+
+		async saveEventWithRetry (event, maxRetries = 3) {
+			for (let i = 0; i < maxRetries; i++) {
+				try {
+					const res = await Services.getModelService().saveEvent(this.model.id, this.hash, event)
+					if (res) {
+						this.onSaved(res)
+						return
+					}
+				} catch (err) {
+					this.logger.warn('saveEventWithRetry', `Attempt ${i + 1} of ${maxRetries} failed`, err)
+				}
+				await new Promise(resolve => setTimeout(resolve, 500 * (i + 1)))
+			}
+			this.logger.error('saveEventWithRetry', 'Event could not be saved after retries', event.type, event.widget)
 		},
 
 		onSaved (){
