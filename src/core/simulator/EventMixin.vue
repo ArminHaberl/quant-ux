@@ -703,7 +703,17 @@
 		  },
   
 		  onValiationError (screenID, widgetID, e){
-			  this.log("ValidationError",screenID, widgetID, null, {type:"value", value: e.value});
+			  const state = {type:"value", value: e.value}
+			  const widget = this.renderFactory && this.renderFactory.getUIWidgetByID(widgetID)
+			  if (widget && widget.getStateOptions) {
+				  const options = widget.getStateOptions()
+				  if (options && options.rowOrder) {
+					  state.options = {
+						  rowOrder: options.rowOrder
+					  }
+				  }
+			  }
+			  this.log("ValidationError",screenID, widgetID, null, state);
 		  },
   
 		  onValiationOK (screenID, widgetID){

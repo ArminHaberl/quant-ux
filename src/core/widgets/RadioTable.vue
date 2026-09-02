@@ -22,7 +22,8 @@ export default {
       value: {},
       styleArrowColor: '',
       validationActive: false,
-      validationErrorActive: false
+      validationErrorActive: false,
+      rowOrder: null
     };
   },
   computed: {
@@ -53,6 +54,8 @@ export default {
       this._rowLabelNodes = []
       this._rowLabels = {}
       this._rowHooks = {}
+      this._rowNodes = {}
+      this._tableBody = null
     },
 
     async moveUp (i, e) {
@@ -110,22 +113,153 @@ export default {
     },
 
 
+    _getRowNames (data) {
+      const result = []
+      const rows = data || []
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i]) {
+          result.push(rows[i][0])
+        }
+      }
+      return result
+    },
+
+    _arraysEqual (a, b) {
+      if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+        return false
+      }
+      for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) {
+          return false
+        }
+      }
+      return true
+    },
+
+    _isRowOrderForData (order, data) {
+      const rowNames = this._getRowNames(data)
+      if (!Array.isArray(order) || order.length !== rowNames.length) {
+        return false
+      }
+      return rowNames.every(rowName => order.indexOf(rowName) >= 0)
+    },
+
+    _normalizeRowOrder (order, data) {
+      const rowNames = this._getRowNames(data)
+      const result = []
+      const used = {}
+      const addRow = rowName => {
+        const index = rowNames.indexOf(rowName)
+        if (index >= 0 && !used[index]) {
+          used[index] = true
+          result.push(rowNames[index])
+        }
+      }
+
+      if (Array.isArray(order)) {
+        order.forEach(addRow)
+      }
+      rowNames.forEach(addRow)
+      return result
+    },
+
+    _initializeRowOrder (data, randomize) {
+      const rowNames = this._getRowNames(data)
+      if (!randomize) {
+        this.rowOrder = rowNames
+      } else if (!this._isRowOrderForData(this.rowOrder, data)) {
+        this.rowOrder = rowNames.slice()
+        if (this.mode === 'simulator') {
+          this.shuffleArray(this.rowOrder)
+        }
+      }
+    },
+
+    _getOrderedData (data) {
+      const rows = data || []
+      if (rows.length < 2) {
+        return rows
+      }
+
+      const rowNames = this._getRowNames(rows)
+      const ordered = [rows[0]]
+      const used = {}
+      const order = Array.isArray(this.rowOrder) ? this.rowOrder : rowNames
+      order.forEach(rowName => {
+        const index = rowNames.indexOf(rowName)
+        if (index >= 0 && !used[index]) {
+          used[index] = true
+          ordered.push(rows[index + 1])
+        }
+      })
+      rowNames.forEach((rowName, index) => {
+        if (!used[index]) {
+          used[index] = true
+          ordered.push(rows[index + 1])
+        }
+      })
+      return ordered
+    },
+
+    _setRowStyle (row, position) {
+      const style = this.style || {}
+      const isEven = position % 2 === 1
+      if (isEven && (style.evenRowBackground || style.evenRowColor)) {
+        row.style.background = style.evenRowBackground
+        row.style.color = style.evenRowColor
+      } else {
+        row.style.background = style.background
+        row.style.color = style.color
+      }
+    },
+
+    _reorderRenderedRows () {
+      if (!this._tableBody || !this.model || !this.model.props) {
+        return
+      }
+
+      const data = this._getOrderedData(this.model.props.data)
+      this._rowKeys = []
+      for (let i = 1; i < data.length; i++) {
+        const rowName = data[i][0]
+        const row = this._rowNodes[rowName]
+        if (row) {
+          this._tableBody.appendChild(row)
+          this._setRowStyle(row, i - 1)
+          this._rowKeys[i] = rowName
+        }
+      }
+    },
+
+    setRowOrder (order) {
+      const data = this.model && this.model.props ? this.model.props.data : []
+      const normalized = this._normalizeRowOrder(order, data)
+      const changed = !this._arraysEqual(this.rowOrder, normalized)
+      this.rowOrder = normalized
+      if (changed) {
+        this._reorderRenderedRows()
+      }
+      return changed
+    },
+
     render(model, style, scaleX, scaleY) {
-      this.cleanupRender()
       this.model = model;
       this.style = style;
       this._scaleX = scaleX;
       this._scaleY = scaleY;
 
-      if (this.mode === 'simulator' && model.props.randomize) {
-        this.shuffleArray(this.value)
-      }
+      this._initializeRowOrder(model.props.data, !!model.props.randomize)
+      this.renderTable()
+    },
 
+    renderTable () {
+      this.cleanupRender()
+      const data = this._getOrderedData(this.model.props.data)
       const table = this.db.table().build()
-      this.renderHeader(table, model.props.data)
-      this.renderRows(table, model.props.data)
+      this.renderHeader(table, data)
+      this.renderRows(table, data)
 
-      this.setStyle(style, model);
+      this.setStyle(this.style, this.model);
       this.setValue(this.value)
       this.domNode.appendChild(table)
     },
@@ -138,6 +272,7 @@ export default {
 
     renderRows (table, data) {
       const tbody = this.db.tbody().build(table)
+      this._tableBody = tbody
       this._rowKeys = []
       this._rowRadios = {}
       this._rowLabels = {}
@@ -148,19 +283,13 @@ export default {
         const rowName = row[0]
         const tr = this.db.tr().build(table)
 
-        const isEven = (i % 2 === 0)
-        if (isEven && (this.style.evenRowBackground || this.style.evenRowColor)) {
-          tr.style.background = this.style.evenRowBackground
-          tr.style.color = this.style.evenRowColor
-        } else {
-          tr.style.background = this.style.background
-          tr.style.color = this.style.color
-        }
+        this._setRowStyle(tr, i - 1)
 
         const labelTD = this.db.td("MatcWidgetTypeRadioTableLabel").build(tr)
         this.db.span("", rowName).build(labelTD);
         this._rowLabelNodes.push(labelTD);
         this._rowKeys[i] = rowName
+        this._rowNodes[rowName] = tr
         this._rowLabels[rowName] = labelTD
         this._rowHooks[rowName] = []
         this.registerRowRadio(rowName)
@@ -269,14 +398,22 @@ export default {
     },
 
     getState() {
-      return {
+      const state = {
         type: "select",
         value: this.value
-      };
+      }
+      const options = this.getStateOptions()
+      if (options) {
+        state.options = options
+      }
+      return state
     },
 
     setState(state) {
       if (state && state.type == "select") {
+        if (state.options && Array.isArray(state.options.rowOrder)) {
+          this.setRowOrder(state.options.rowOrder)
+        }
         if (state.options && state.options.valid === true) {
           this.validationErrorActive = false
           this.hideRowErrors()
@@ -289,16 +426,26 @@ export default {
          * The "value" type state is logged by the ValidationError event,
          * e.g. when a transition was blocked because the table is invalid.
          */
+        if (state.options && Array.isArray(state.options.rowOrder)) {
+          this.setRowOrder(state.options.rowOrder)
+        }
         this.validationErrorActive = true
         this.setValue(state.value)
       }
     },
 
-    getStateOptions () {
-      if (this.model.props.validation && this.lastValidation !== undefined) {
-        return {
-          valid: !!this.lastValidation
-        }
+    getStateOptions (validOverride) {
+      const options = {}
+      if (this.model && this.model.props && this.model.props.randomize && Array.isArray(this.rowOrder)) {
+        options.rowOrder = this.rowOrder.slice()
+      }
+      if (validOverride !== undefined) {
+        options.valid = !!validOverride
+      } else if (this.model && this.model.props && this.model.props.validation && this.lastValidation !== undefined) {
+        options.valid = !!this.lastValidation
+      }
+      if (Object.keys(options).length > 0) {
+        return options
       }
       return null
     },
@@ -329,9 +476,7 @@ export default {
         type: "select",
         value: value,
         runTransition: false,
-        options: {
-          valid: isValid
-        }
+        options: this.getStateOptions(isValid)
       })
     },
 

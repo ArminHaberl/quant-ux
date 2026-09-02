@@ -72,6 +72,7 @@
 				  * append to DOM without any animation..
 				  */
 				  this.addScreen(screen, div, line);
+				  this.logRandomizedWidgetStates(screen);
 
   
 				  if(this.qr){
@@ -900,6 +901,7 @@
 						  animation.onEnd(() => {
 							  this.logger.log(-1,"renderTransition","exit > from " + screenID + " to " + line.to);
 							  this.log("ScreenLoaded",screen.id, null, null);
+							  this.logRandomizedWidgetStates(screen);
 							  this.removeScreen(oldScreenDiv);
 							  this.destroyUiWidgets();
 						  });
@@ -936,6 +938,7 @@
 							  screen._transAnim = anim;
 							  this.removeScreen(oldScreenDiv);
 							  this.log("ScreenLoaded",screen.id, null, null); // ultra important. Otherwise player are fucked uppp
+							  this.logRandomizedWidgetStates(screen);
   
 						  } else {
 							  console.warn("renderTransition() > No animation function for : createScreen_"+line.animation);
@@ -1036,7 +1039,35 @@
 				  this.log("WidgetInit",this.loadingScreen.id, e.id, null, e.state);
 			  }
 		  },
-  
+
+		  logRandomizedWidgetStates (screen) {
+			  if (!screen || !this.renderFactory) {
+				  return
+			  }
+
+			  const widgetIDs = []
+			  const collectWidgetIDs = id => {
+				  const widget = this.model && this.model.widgets ? this.model.widgets[id] : null
+				  if (!widget) {
+					  return
+				  }
+				  widgetIDs.push(id)
+				  if (widget.children) {
+					  widget.children.forEach(collectWidgetIDs)
+				  }
+			  }
+			  const children = screen.children || []
+			  children.forEach(collectWidgetIDs)
+
+			  widgetIDs.forEach(id => {
+				  const uiWidget = this.renderFactory.getUIWidgetByID(id)
+				  const widget = uiWidget && uiWidget.model
+				  if (widget && widget.type === "RadioTable" && widget.props && widget.props.randomize && uiWidget.getState) {
+					  this.log("WidgetInit", screen.id, widget.id || id, null, uiWidget.getState())
+				  }
+			  })
+		  },
+
 		  renderWidget (screen, widget){
 			  var div = this.createBox(widget, screen);
 			  div.setAttribute('widgetID', widget.id)
