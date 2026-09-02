@@ -21,7 +21,8 @@ export default {
     return {
       value: {},
       styleArrowColor: '',
-      validationActive: false
+      validationActive: false,
+      validationErrorActive: false
     };
   },
   computed: {
@@ -258,6 +259,13 @@ export default {
       }
       this.value = value
       this.renderChecked(this.value)
+      if (this.validationErrorActive) {
+        /**
+         * While a validation error is active, the row highlight is a pure
+         * function of the current value: answered rows clear automatically.
+         */
+        this.showRowErrors()
+      }
     },
 
     getState() {
@@ -269,8 +277,30 @@ export default {
 
     setState(state) {
       if (state && state.type == "select") {
-        this.setValue(state.value);
+        if (state.options && state.options.valid === true) {
+          this.validationErrorActive = false
+          this.hideRowErrors()
+        } else if (state.options && state.options.valid === false) {
+          this.validationErrorActive = true
+        }
+        this.setValue(state.value)
+      } else if (state && state.type == "value") {
+        /**
+         * The "value" type state is logged by the ValidationError event,
+         * e.g. when a transition was blocked because the table is invalid.
+         */
+        this.validationErrorActive = true
+        this.setValue(state.value)
       }
+    },
+
+    getStateOptions () {
+      if (this.model.props.validation && this.lastValidation !== undefined) {
+        return {
+          valid: !!this.lastValidation
+        }
+      }
+      return null
     },
 
     _validateValue (value) {
@@ -289,6 +319,22 @@ export default {
       return this.validate(this.value, showError);
     },
 
+    emitValidationStateChange (value, isValid) {
+      /**
+       * The validity did not change the value, so no stateChange would be
+       * logged by the clicks themselves. Emit one explicitly, so the replay
+       * has an event that carries the validation state.
+       */
+      this.emit("stateChange", {
+        type: "select",
+        value: value,
+        runTransition: false,
+        options: {
+          valid: isValid
+        }
+      })
+    },
+
     validate (value, showError, forceValidation) {
       if (showError == undefined) {
         showError = true
@@ -304,11 +350,13 @@ export default {
             if (this.lastValidation != isValid || forceValidation) {
               this.hideRowErrors()
               this.emitValidationOK(value)
+              this.emitValidationStateChange(value, isValid)
             }
           } else {
             this.showRowErrors()
             if (this.lastValidation != isValid || forceValidation) {
               this.emitValidationError(value)
+              this.emitValidationStateChange(value, isValid)
             }
           }
         }
