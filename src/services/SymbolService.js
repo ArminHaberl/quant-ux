@@ -31,12 +31,16 @@ class SymbolService extends AbstractService{
       }
     }
 
+    _getIconURL (path) {
+      return (process.env.BASE_URL || '/').replace(/\/+$/, '') + path
+    }
+
     getIcons () {
-      return this._getChached('/icons.json')
+      return this._getChached(this._getIconURL('/icons.json'))
     }
 
     getSVGIcons () {
-      return this._getChached('/tabler-icons.json')
+      return this._getChached(this._getIconURL('/tabler-icons.json'))
     }
 
 
