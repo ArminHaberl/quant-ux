@@ -206,6 +206,10 @@
 	table thead td{
 		text-align: center;
 	}
+
+	table thead td:first-child {
+		text-align: inherit;
+	}
 }
 
 /*******************************
@@ -2300,4 +2304,3 @@
 .MatcLabeledCheckBox .MatchWidgetTypeLabel .MatcInlineEditable {
 	cursor: pointer;
 }
-
