@@ -18,6 +18,7 @@ import Logger from "common/Logger";
 import Layout from "core/Layout";
 import RenderFactory from 'core/RenderFactory'
 import Animation from 'core/Animation'
+import JSONPath from 'core/JSONPath'
 
 export default {
   name: "Preview",
@@ -73,6 +74,8 @@ export default {
       this.logger.log(2,"setModel", "enter > m:" + model.id + " > s:" + screenID + " > w:" + widgetID);
 
       this.model = model;
+
+      this._scriptEffectBase = {};
 
       this.selectedWidgetID = widgetID;
 
@@ -520,6 +523,104 @@ export default {
       var widget = this.renderFactory.getUIWidgetByID(widgetID);
       if (widget) {
         widget.setState(state, t);
+      }
+    },
+
+    setScriptEffectState: function(effects) {
+      if (!this.model || !this.renderFactory) {
+        return
+      }
+
+      if (!this._scriptEffectBase) {
+        this._scriptEffectBase = {}
+      }
+
+      const currentEffects = effects || {}
+      const widgetIDs = {}
+      Object.keys(this._scriptEffectBase).forEach(id => {
+        widgetIDs[id] = true
+      })
+      Object.keys(currentEffects).forEach(id => {
+        widgetIDs[id] = true
+      })
+
+      Object.keys(widgetIDs).forEach(id => {
+        const widget = this.model.widgets[id]
+        if (!widget) {
+          return
+        }
+
+        if (!this._scriptEffectBase[id]) {
+          this._scriptEffectBase[id] = {
+            style: lang.clone(widget.style || {}),
+            props: lang.clone(widget.props || {})
+          }
+        }
+
+        const base = this._scriptEffectBase[id]
+        const effect = currentEffects[id] || {}
+        const style = Object.assign({}, base.style, effect.style || {})
+        const props = Object.assign({}, base.props, effect.props || {})
+        const styleChanged = JSON.stringify(widget.style || {}) !== JSON.stringify(style)
+        const propsChanged = JSON.stringify(widget.props || {}) !== JSON.stringify(props)
+
+        widget.style = style
+        widget.props = props
+        if (styleChanged || propsChanged) {
+          this.renderFactory.updateWidget(widget)
+        }
+
+        const node = this.renderFactory.getWidgetNodeByID(id)
+        if (node) {
+          if (style.display !== undefined) {
+            node.style.display = style.display || ''
+          } else {
+            node.style.display = ''
+          }
+        }
+      })
+    },
+
+    setScriptDataBindingState: function(data) {
+      if (!this.model || !this.renderFactory) {
+        return
+      }
+
+      const values = data || {}
+      const widgets = this.renderFactory.getAllUIWidgets()
+      for (const id in widgets) {
+        const widget = widgets[id]
+        const dataBinding = this.getDataBinding(widget.model)
+        if (!dataBinding) {
+          continue
+        }
+        for (const key in dataBinding) {
+          const path = dataBinding[key]
+          if (!path) {
+            continue
+          }
+          const value = JSONPath.get(values, path)
+          if (value === undefined || value === null) {
+            continue
+          }
+
+          /**
+           * Only call setDataBinding() when the current widget value differs
+           * from the recorded script data. The ordinary widget state replay
+           * may restore the static label text in the same frame, so we apply
+           * the script data after it and skip no-op updates.
+           */
+          let current = null
+          try {
+            current = widget.getValue ? widget.getValue() : undefined
+          } catch (err) {
+            current = undefined
+          }
+          if (JSON.stringify(current) === JSON.stringify(value)) {
+            continue
+          }
+          widget.setDataBinding(path, value)
+        }
       }
     },
 

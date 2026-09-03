@@ -782,12 +782,25 @@ export default class Core extends Evented {
                                 if (parentWidget) {
                                     let overwritenWidgetID = overwritenWidgets[screenID][parentWidgetID];
                                     if (!overwritenWidgetID) {
+                                        let copyID = parentWidget.id + "@" + screenID;
+
+                                        /**
+                                         * Inheritance is not idempotent. If the model has
+                                         * already been inherited (e.g. a replay preview runs
+                                         * createInheritedModel() again on an inherited model),
+                                         * the copy is already present. Skip it, otherwise the
+                                         * same widget would be rendered twice.
+                                         */
+                                        if (inScreen.children.indexOf(copyID) >= 0 || inModel.widgets[copyID]) {
+                                            continue;
+                                        }
+
                                         let copy = lang.clone(parentWidget);
 
                                         /**
                                          * Super important the ID mapping!!
                                          */
-                                        copy.id = parentWidget.id + "@" + screenID;
+                                        copy.id = copyID;
                                         copy.inherited = parentWidget.id;
                                         copy.inheritedScreen = screenID;
                                         copy.masterScreen = parentID

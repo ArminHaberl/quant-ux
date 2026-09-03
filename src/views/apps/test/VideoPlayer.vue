@@ -41,6 +41,7 @@ import Analytics from 'dash/Analytics'
 import Preview from 'page/Preview'
 import Core from 'core/Core'
 import Services from 'services/Services'
+import JSONPath from 'core/JSONPath'
 
 export default {
     name: 'Player',
@@ -60,6 +61,7 @@ export default {
 				"OverlayShowAnimation": true,
 				"OverlayRemoveAnimation": true,
 				"ValidationOk": true,
+				"ScriptEffect": true,
 				"MouseOut": true,
 				"MouseOver": true,
 				"WidgetInit": true
@@ -522,6 +524,10 @@ export default {
 			var lastStates = this.getDefaultStates();
 
 			var widgetStatesByEvent ={};
+			var lastScriptEffects = {};
+			var lastScriptData = {};
+			var scriptEffectsByEvent = {};
+			var scriptDataByEvent = {};
 
 			var overLays = [];
 			var overlayStatesByEvent ={};
@@ -544,15 +550,19 @@ export default {
 				 * for the current event to the states of the current screen!
 				 */
 				var states = lang.clone(lastStates)
-				widgetStatesByEvent[event.id] = states[screenID];
+				widgetStatesByEvent[event.id] = states[screenID] || {};
 				lastStates = states;
 
+				var scriptEffects = lang.clone(lastScriptEffects)
+				var scriptData = lang.clone(lastScriptData)
 
 				/**
 				 * 2) if there is a new state, we update it
 				 * for the new state for the widget that emited it
 				 */
-				if(event.state && event.type!="ScreenScroll"){
+				if (event.state && event.state.type === "script") {
+					this.applyScriptEffect(scriptEffects, scriptData, event.state.value)
+				} else if(event.state && event.type!="ScreenScroll"){
 
 
 					if(states[screenID]){
@@ -578,6 +588,10 @@ export default {
 					}
 
 				}
+				lastScriptEffects = scriptEffects
+				lastScriptData = scriptData
+				scriptEffectsByEvent[event.id] = scriptEffects
+				scriptDataByEvent[event.id] = scriptData
 
 				/**
 				 * 3) Here we build for each event the scrollPosition.
@@ -655,6 +669,8 @@ export default {
 
 
 			this._widgetStates = widgetStatesByEvent;
+			this._scriptEffects = scriptEffectsByEvent;
+			this._scriptData = scriptDataByEvent;
 			this._overLayStates = overlayStatesByEvent;
 			this._scrollStates = screenScoll;
 
@@ -673,6 +689,33 @@ export default {
 					s.value = value;
 				}
 			}
+		},
+
+		applyScriptEffect (effects, data, effect) {
+			if (!effect) {
+				return
+			}
+
+			const widgetChanges = effect.widgetChanges || []
+			widgetChanges.forEach(change => {
+				if (!change || !change.id || (change.key !== 'style' && change.key !== 'props')) {
+					return
+				}
+
+				if (!effects[change.id]) {
+					effects[change.id] = {}
+				}
+				const current = effects[change.id][change.key] || {}
+				effects[change.id][change.key] = Object.assign({}, current, lang.clone(change.value || {}))
+			})
+
+			const dataChanges = effect.dataChanges || []
+			dataChanges.forEach(change => {
+				if (!change || !change.path) {
+					return
+				}
+				JSONPath.set(data, change.path, change.removed ? undefined : change.value)
+			})
 		},
 
 
@@ -1091,6 +1134,12 @@ export default {
 				}
 
 				/**
+				 * Apply visual effects produced by scripts before restoring the
+				 * ordinary widget states for this event.
+				 */
+				this.preview.setScriptEffectState(this._scriptEffects[event.id])
+
+				/**
 				 * now update widget states
 				 */
 				var states = this._widgetStates[event.id];
@@ -1098,6 +1147,12 @@ export default {
 					var state = states[widgetID];
 					this.preview.setWidgetState(widgetID, state, forceMarker, t +this.min);
 				}
+
+				/**
+				 * Apply script data bindings after the ordinary widget states,
+				 * so recorded data values win over static label defaults.
+				 */
+				this.preview.setScriptDataBindingState(this._scriptData[event.id])
 
 				/**
 				 * Set scroll

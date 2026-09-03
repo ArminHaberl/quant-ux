@@ -5,6 +5,7 @@
 <script>
 import ScriptEngine from '../../core/engines/ScriptEngine'
 import * as ScriptToModel from '../../core/engines/ScriptToModel'
+import lang from 'dojo/_base/lang'
 
 export default {
   name: 'ScriptMixin',
@@ -107,6 +108,7 @@ export default {
     },
     async runScript (script, widget, orginalLine) {
         this.logger.log(2,"runScript","enter", widget?.name);
+        const dataBefore = lang.clone(this.dataBindingValues || {})
 
         const event = this.getScriptSourceEvent(orginalLine)
 
@@ -119,6 +121,7 @@ export default {
                     this.vibrate(result)
                     this.renderAppChanges(result)
                     this.renderScriptDataBinding(result)  
+                    this.logScriptEffect(result, widget, dataBefore)
                     this.renderScriptTo(result, widget, orginalLine)
                     this.logger.log(1,"runScript","exit");
                     resolve(result)
@@ -127,6 +130,62 @@ export default {
                 resolve(result)
             }
         }) 
+    },
+
+    getScriptDataChanges (before, after) {
+        const changes = []
+        this.collectScriptDataChanges(before || {}, after || {}, '', changes)
+        return changes
+    },
+
+    collectScriptDataChanges (before, after, path, changes) {
+        const beforeIsObject = before && typeof before === 'object' && !Array.isArray(before)
+        const afterIsObject = after && typeof after === 'object' && !Array.isArray(after)
+        if (beforeIsObject && afterIsObject) {
+            const keys = {}
+            Object.keys(before).forEach(key => { keys[key] = true })
+            Object.keys(after).forEach(key => { keys[key] = true })
+            Object.keys(keys).forEach(key => {
+                const nextPath = path ? path + '.' + key : key
+                if (!Object.prototype.hasOwnProperty.call(after, key)) {
+                    changes.push({path: nextPath, removed: true})
+                } else {
+                    this.collectScriptDataChanges(before[key], after[key], nextPath, changes)
+                }
+            })
+            return
+        }
+
+        if (JSON.stringify(before) !== JSON.stringify(after)) {
+            changes.push({path: path, value: after})
+        }
+    },
+
+    getScriptWidgetChanges (result) {
+        return (result.appDeltas || [])
+            .filter(change => change && change.type === 'Widget' && change.id && (change.key === 'style' || change.key === 'props'))
+            .map(change => ({
+                id: change.id,
+                key: change.key,
+                value: change.key === 'style' ? change.style : change.props
+            }))
+    },
+
+    logScriptEffect (result, widget, dataBefore) {
+        const dataChanges = this.getScriptDataChanges(dataBefore, result.viewModel || this.dataBindingValues || {})
+        const widgetChanges = this.getScriptWidgetChanges(result)
+        if (dataChanges.length === 0 && widgetChanges.length === 0) {
+            return
+        }
+
+        const screenID = this.currentScreen ? this.currentScreen.id : null
+        this.log('ScriptEffect', screenID, widget ? widget.id : null, null, {
+            type: 'script',
+            value: {
+                dataChanges,
+                widgetChanges
+            }
+        })
     },
 
     vibrate(result) {
