@@ -19,6 +19,7 @@ import on from "dojo/on";
 import touch from "dojo/touch";
 import topic from "dojo/topic";
 import win from "dojo/_base/win";
+import Color from "dojo/_base/Color";
 import DomBuilder from "common/DomBuilder";
 import UIWidget from "core/widgets/UIWidget";
 
@@ -118,10 +119,10 @@ export default {
       this._scaleX = scaleX;
       this._scaleY = scaleY;
 
-      if (model.props.selected) {
+      if (model.props.selected !== undefined && model.props.selected !== null && model.props.selected !== '' && model.props.selected !== false) {
         this.setValue(model.props.selected, true);
       } else if (model.props.options && model.props.options.length > 0) {
-        this.setValue(model.props.options[0], true);
+        this.setValue('', true);
       } else {
         this.setValue("- No Options - ", true);
       }
@@ -439,6 +440,10 @@ export default {
     _setDataBindingValue (v) {
       var options = this.model.props.options;
       if (options) {
+        if (v === null || v === undefined || v === '' || v === false) {
+          this.setValue('');
+          return;
+        }
         if (isNaN(v)) {
           var i = options.indexOf(v);
           if (i >= 0 && i < options.length) {
@@ -454,13 +459,30 @@ export default {
       }
     },
 
+    getPlaceHolderColor (style) {
+      const c = new Color(style.color);
+      c.a = 0.5;
+      return c.toString();
+    },
+
     setValue (value, ignoreValidation) {
       this.value = value;
       if (!ignoreValidation) {
         this.validate(this.value, true);
       }
       if (this.label) {
-        this.setTextContent(this.label, this.value);
+        const empty = value === null || value === undefined || value === '' || value === false
+        const text = empty
+          ? (this.model && this.model.props && this.model.props.placeholder) || ''
+          : value
+        this.setTextContent(this.label, text);
+        if (this.style) {
+          if (empty) {
+            this.label.style.color = this.getPlaceHolderColor(this.style);
+          } else {
+            this.label.style.color = this.style.color;
+          }
+        }
       }
     },
 
@@ -521,7 +543,7 @@ export default {
     _validateValue (value) {
       const validation = this.model.props.validation;
       if (validation) {
-        if (validation.required && value === this.model.props.options[0]) {
+        if (validation.required && (value === null || value === undefined || value === '' || value === false)) {
           return false;
         }
       }

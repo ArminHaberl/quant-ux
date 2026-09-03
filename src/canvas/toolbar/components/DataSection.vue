@@ -993,6 +993,7 @@ export default {
 		_showDropDown (model){
 			this._setSectionLabel("DropDown");
 			this._renderButton("Options", "SettingsList", "_renderOptionDialog");
+			this._renderInput(model.props, "placeholder", "Placeholder text shown when no option is selected", "e.g. Please choose");
 
 			this._renderBoxColor("Popup", model, "popupBackground", "popupColor");
 			this._renderBoxColor("Selection", model, "selectedOptionBackground", "selectedOptionColor");
