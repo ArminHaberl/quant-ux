@@ -583,11 +583,23 @@ export default {
         const styleChanged = JSON.stringify(widget.style || {}) !== JSON.stringify(style)
         const propsChanged = JSON.stringify(widget.props || {}) !== JSON.stringify(props)
 
+        /**
+         * Apply the effect to the DOM without poisoning the model: script
+         * effects are per-frame replay states and must not accumulate into
+         * the shared model widget. Otherwise re-renders (and inherited
+         * copies) would read blanked props (e.g. a cleared label) and
+         * the white/empty duplicates in the player would persist.
+
+         */
+        const orgStyle = widget.style
+        const orgProps = widget.props
         widget.style = style
         widget.props = props
         if (styleChanged || propsChanged) {
           this.renderFactory.updateWidget(widget)
         }
+        widget.style = orgStyle
+        widget.props = orgProps
 
         const node = this.renderFactory.getWidgetNodeByID(id)
         if (node) {
@@ -629,6 +641,15 @@ export default {
           }
           const value = JSONPath.get(values, path)
           if (value === undefined || value === null) {
+            continue
+          }
+
+          /**
+           * A recorded empty value must not wipe the static widget
+           * (e.g. a label's text) after the ordinary state replay has
+           * restored it. Treat it like an undefined/null value.
+           */
+          if (value === '' ) {
             continue
           }
 

@@ -703,6 +703,19 @@ export default class Core extends Evented {
 
     createInheritedModel(model) {
         /**
+         * Inheritance is not idempotent. The replay preview runs
+         * createInheritedModel() on an already-inherited model (e.g.
+         * VideoPlayer.setModel() then Preview.setModel() again). In that
+         * case the master-screen copies are already materialized; re-running
+         * would create nested copies (orig@screen@screen) stacked on top
+         * of the originals in the player. Skip it to keep a single copy.
+
+         */
+        if (model.inherited) {
+            return model;
+        }
+
+        /**
          * Build lookup map for overwrites
          */
         const overwritenWidgets = {};

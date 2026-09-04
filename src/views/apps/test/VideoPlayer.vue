@@ -736,7 +736,24 @@ export default {
 					effects[change.id] = {}
 				}
 				const current = effects[change.id][change.key] || {}
-				effects[change.id][change.key] = Object.assign({}, current, lang.clone(change.value || {}))
+				let value = lang.clone(change.value || {})
+
+				/**
+				 * A stray empty recorded value must not wipe the widget's
+				 * static props (e.g. a label's label text). Only merge
+				 * entries that carry a real value.
+				 */
+				if (change.key === 'props') {
+					const merged = {}
+					for (const key in value) {
+						if (value[key] !== undefined && value[key] !== null && value[key] !== '' ) {
+							merged[key] = value[key]
+						}
+					}
+					value = merged
+				}
+
+				effects[change.id][change.key] = Object.assign({}, current, value)
 			})
 
 			const dataChanges = effect.dataChanges || []
@@ -1182,7 +1199,7 @@ export default {
 				 * Apply script data bindings after the ordinary widget states,
 				 * so recorded data values win over static label defaults.
 				 */
-				this.preview.setScriptDataBindingState(this._scriptData[event.id])
+				this.preview.setScriptDataBindingState(this._scriptData[event.id], this._touchedWidgets[event.id])
 
 				/**
 				 * Set scroll

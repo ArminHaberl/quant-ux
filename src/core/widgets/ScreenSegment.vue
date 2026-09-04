@@ -120,6 +120,19 @@ export default {
         core.model = this.app
 
         /**
+         * If the segment's target screen is the screen the segment itself
+         * lives on, the surrounding renderer (preview/simulator) already
+         * rendered those widgets. Re-rendering them here would stack a
+         * duplicate copy on top of the originals (which replay may leave
+         * blank). Skip them to avoid the overlapping copies.
+         */
+        const parentScreen = core.getParentScreen(widget, this.app)
+        if (parentScreen && screenID === parentScreen.id) {
+          this.logger.log(0, 'renderScreen', 'Skip self screen ' + screenID)
+          return
+        }
+
+        /**
          * Attention: The core.sortedList is somehow reversed... So, we
          * prevent this by passing a new parameter.
          */
@@ -133,8 +146,6 @@ export default {
         this._screenID = screenID
         this.domNode.innerHTML = ""
         this._childWidgets = [] 
-
-        const parentScreen = core.getParentScreen(widget, this.app)
 
         const cntr = db
           .div('MatcWidgetTypeScreenSegementCntr')
