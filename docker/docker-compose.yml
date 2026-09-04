@@ -10,7 +10,10 @@ services:
   qux-fe:
     restart: always
     container_name: quant-ux-frontend
-    image: klausenschaefersinho/quant-ux
+    image: quant-ux
+    build:
+      context: ..
+      target: runtime-production
     environment:
       - QUX_PROXY_URL=http://quant-ux-backend:8080        # this is the path the front end uses to talk tot he backend
       - QUX_AUTH=qux

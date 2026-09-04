@@ -15,7 +15,7 @@ FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS builder
 USER node
 WORKDIR /home/node
 
-ARG QUX_PUBLIC_PATH
+ARG QUX_PUBLIC_PATH=/quant-ux/
 ENV QUX_PUBLIC_PATH=${QUX_PUBLIC_PATH}
 
 COPY --chown=node:node [".", "./"]

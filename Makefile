@@ -1,7 +1,7 @@
 
 
 
-QUX_PUBLIC_PATH ?= /
+QUX_PUBLIC_PATH ?= /quant-ux/
 
 
 
