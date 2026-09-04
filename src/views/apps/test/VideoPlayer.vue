@@ -1130,6 +1130,27 @@ export default {
 			 */
 			var event = this.getEvent(Math.floor(t));
 
+			/**
+			 * Same-millisecond batches collapse: a ScreenLoaded(N) followed
+			 * by the old overlay's OverlayRemoved is shadowed by getEvent(),
+			 * which keeps only the last event at a given time. Detect the transition
+			 * in the same batch and let it win, otherwise the new screen never
+			 * renders until a later event re-renders it ("only appears on user
+			 * interaction").
+			 */
+			if (event && event.type == "OverlayRemoved") {
+				for (var si = Math.max(0, this.lastEventPos - 1); si >= 0; si--) {
+					var pe = this.events[si];
+					if (pe.time < event.time - 100) {
+						break;
+					}
+					if (pe.type == "ScreenLoaded" || pe.type == "ScreenAnimation") {
+						event = pe;
+						break;
+					}
+				}
+			}
+
 
 			try {
 				/**
@@ -1139,6 +1160,15 @@ export default {
 
 					if("ScreenAnimation" == event.type){
 						this.preview.animateScreen(event, t, this.min);
+					} else if(event.type == "OverlayRemoved" || event.type == "OverlayLoaded"){
+						/**
+						 * The screen field of these events is the screen the overlay
+						 * belongs to, never a new transition target. For OverlayRemoved
+						 * following a transition it is the stale pre-transition screen, so
+						 * re-rendering it would revert the just-shown new screen. The
+						 * transition is driven by the ScreenLoaded/ScreenAnimation
+						 * event — skip these.
+						 */
 					} else {
 						this.preview.setScreen(event.screen, event.scrollTop);
 					}
@@ -1149,16 +1179,24 @@ export default {
 				 *
 				 * 1) We render all overlays.
 				 * 2) Then we run an animation if required
+				 *
+				 * A screen transition inherently clears all overlays
+				 * (Preview.animateScreen() calls removeAllOverlays()). Applying
+				 * the pre-transition overlay state here would re-stack the old
+				 * overlay on top of the new screen, hiding it until another
+				 * event re-renders the screen. Skip it for transitions; the
+				 * correct overlay state resumes with the next non-transition event.
+
 				 */
 				var overlays = this._overLayStates[event.id];
-				if(overlays){
+				if(overlays && event.type != "ScreenAnimation"){
 					this.preview.setOverlays(overlays);
 				}
 				if(event.type == "OverlayShowAnimation" || event.type == "OverlayRemoveAnimation"){
 
 					this.preview.animateOverlay(event, t, this.min);
 
-				} else if(this.lastEvent && this.lastEvent.type == "OverlayShowAnimation"){
+				} else if(event.type != "ScreenAnimation" && this.lastEvent && this.lastEvent.type == "OverlayShowAnimation"){
 
 					/**
 					 * Because of skipping or so, the animation might not have reached 100%,

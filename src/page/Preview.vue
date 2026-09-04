@@ -922,6 +922,20 @@ export default {
 
           if (this._currentAnimation) {
             this._currentAnimation.time(time);
+
+            /**
+             * Once the transition has finished, drop the animation. Leaving
+             * it around makes setScreen() re-render the screen on every
+             * subsequent event (because of the "if there was an animation,
+             * make sure we render new again" check), which is both churn
+             * and the reason a hidden screen only surfaced on the next user
+             * interaction.
+             */
+            const start = event.time - min
+            const end = start + (event.animation.duration || 0)
+            if (time >= end) {
+              this.animateScreenEnd()
+            }
           } else {
             console.warn("animateScreen() > No Animation");
           }
