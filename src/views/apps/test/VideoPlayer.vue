@@ -365,6 +365,7 @@ export default {
 						 * Now calculate the state from the *start* point on.
 						 * j is the rolling timestamp
 						 */
+						const endSlot = startTimeStamp + (animation.duration || 0) + 60
 						for(let j=startTimeStamp; j < this.duration; j+=30 ){
 							/**
 							 * The current time index for the animation. We substract start,
@@ -424,6 +425,15 @@ export default {
 
 							if(p >=1){
 								animationEnded = true;
+							}
+
+							if (j >= endSlot) {
+								/**
+								 * The animation is over. Do not smear its terminal style
+								 * over the rest of the replay; later slots keep the
+								 * original widget style.
+								 */
+								break;
 							}
 
 							this._widgetAnimationStates[j][animWidgetId].style = mixed;
@@ -529,6 +539,13 @@ export default {
 			var scriptEffectsByEvent = {};
 			var scriptDataByEvent = {};
 
+			/**
+			 * Track which widgets have a recorded interaction state per screen.
+			 * Script data must never overwrite user interactions during replay.
+			 */
+			var lastTouchedWidgets = {};
+			var touchedWidgetsByEvent = {};
+
 			var overLays = [];
 			var overlayStatesByEvent ={};
 
@@ -555,6 +572,13 @@ export default {
 
 				var scriptEffects = lang.clone(lastScriptEffects)
 				var scriptData = lang.clone(lastScriptData)
+				/**
+				 * Fresh set per event. Screens reset the touched widgets;
+				 * everything else accumulates.
+				 */
+				var touchedWidgets = (event.type == "ScreenLoaded" || event.type == "ScreenAnimation")
+					? {}
+					: Object.assign({}, lastTouchedWidgets)
 
 				/**
 				 * 2) if there is a new state, we update it
@@ -562,7 +586,7 @@ export default {
 				 */
 				if (event.state && event.state.type === "script") {
 					this.applyScriptEffect(scriptEffects, scriptData, event.state.value)
-				} else if(event.state && event.type!="ScreenScroll"){
+				} else if(event.state && event.type!="ScreenScroll" && event.widget){
 
 
 					if(states[screenID]){
@@ -572,6 +596,8 @@ export default {
 						 */
 
 						states[screenID][event.widget] = event.state;
+
+						touchedWidgets[event.widget] = true
 
 						/**
 						 * FIXME: For the radio box we have to change  the
@@ -592,6 +618,9 @@ export default {
 				lastScriptData = scriptData
 				scriptEffectsByEvent[event.id] = scriptEffects
 				scriptDataByEvent[event.id] = scriptData
+
+				lastTouchedWidgets = touchedWidgets
+				touchedWidgetsByEvent[event.id] = touchedWidgets
 
 				/**
 				 * 3) Here we build for each event the scrollPosition.
@@ -671,6 +700,7 @@ export default {
 			this._widgetStates = widgetStatesByEvent;
 			this._scriptEffects = scriptEffectsByEvent;
 			this._scriptData = scriptDataByEvent;
+			this._touchedWidgets = touchedWidgetsByEvent;
 			this._overLayStates = overlayStatesByEvent;
 			this._scrollStates = screenScoll;
 

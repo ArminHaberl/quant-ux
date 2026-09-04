@@ -423,6 +423,25 @@ export default {
         }
       }
 
+      /**
+       * The overlay is gone. Destroy its widget instances and clear any
+       * replay animation cache so the next open renders genuinely fresh
+       * widgets with their full styles (buttons keep background/border).
+       */
+      const screen = this.model && this.model.screens[screenID]
+      if (screen && screen.children) {
+        if (this.renderFactory && this.renderFactory.destroyWidgetsById) {
+          this.renderFactory.destroyWidgetsById(screen.children)
+        }
+        screen.children.forEach(id => {
+          delete this._widgets[id]
+          delete this._lastWidgetAnimationState[id]
+          if (this.renderFactory && this.renderFactory._uiWidgetsStates) {
+            delete this.renderFactory._uiWidgetsStates[id]
+          }
+        })
+      }
+
       //console.debug("removeOverlay() > exit" , this.overlays);
     },
 
@@ -581,14 +600,23 @@ export default {
       })
     },
 
-    setScriptDataBindingState: function(data) {
+    setScriptDataBindingState: function(data, touched) {
       if (!this.model || !this.renderFactory) {
         return
       }
 
       const values = data || {}
+      const touchedSet = touched || {}
       const widgets = this.renderFactory.getAllUIWidgets()
       for (const id in widgets) {
+        if (touchedSet[id]) {
+          /**
+           * The widget has recorded user interactions. The ordinary widget
+           * state replay is authoritative for it, so we must not overwrite
+           * the interaction value with (older) script data.
+           */
+          continue
+        }
         const widget = widgets[id]
         const dataBinding = this.getDataBinding(widget.model)
         if (!dataBinding) {
@@ -640,7 +668,21 @@ export default {
           if (!laststate || pos) {
             let uiwidget = this.renderFactory.getAnimationWrapper(id);
             if (uiwidget) {
-              uiwidget.setAnimatedPos(pos, style);
+              /**
+               * The identity position (marked _org) is not a real animation
+               * and must not create a transform: any non-"none" transform
+               * would open a stacking context and hide the dropdown popup
+               * behind later siblings.
+               */
+              if (pos && pos._org) {
+                const node = uiwidget.getAnimationNode ? uiwidget.getAnimationNode() : uiwidget.domNode
+                if (node) {
+                  node.style.transform = ""
+                  node.style.webkitTransform = ""
+                }
+              } else {
+                uiwidget.setAnimatedPos(pos, style);
+              }
             } else {
               console.debug(
                 "setWidgetAnimationStates() > No ui widget for ",
