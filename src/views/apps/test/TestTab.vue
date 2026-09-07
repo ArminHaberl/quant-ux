@@ -54,6 +54,10 @@
             <CheckBox :value="test.recordOneTestPerUser" :label="getNLS('testSettingsRecordOneTestPerUser')" @change="setRecordOnePerUser"/>
           </div>
 
+          <div class="form-group ">
+            <CheckBox :value="test.useRecaptcha" :label="getNLS('testSettingsBotProtection')" @change="setRecaptcha"/>
+          </div>
+
         
       </div>
     </section>
@@ -239,6 +243,10 @@ export default {
     },
     setRecordOnePerUser(value) {
       this.test.recordOneTestPerUser = value
+      this.onTestChange()
+    },
+    setRecaptcha(value) {
+      this.test.useRecaptcha = value
       this.onTestChange()
     },
     setTranscribeVoice(value) {

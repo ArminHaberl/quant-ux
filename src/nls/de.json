@@ -42,6 +42,12 @@
           "title": "Passwort",
           "msg": "Bitte geben Sie das Passwort ein und klicken Sie auf <b>Weiter</b>",
           "next": "Weiter"
+      },
+      "recaptcha": {
+          "title": "Bot-Prüfung",
+          "msg": "Bitte bestätigen Sie, dass Sie ein Mensch sind, um den Test zu starten.",
+          "error": "Die Bot-Prüfung ist fehlgeschlagen. Bitte versuchen Sie es erneut.",
+          "errorNotConfigured": "Die Bot-Prüfung ist nicht konfiguriert. Bitte kontaktieren Sie den Administrator."
       }
     },
     "table": {

@@ -85,6 +85,7 @@
                                         <div class="MatcButton MatcButtonPrimary MatcTestStartButton"	@click="onStart()">
                                                 {{getNLS("simulator.welcome.start")}}
                                         </div>
+                                        <span v-if="recaptchaError" class="MatcError" style="margin-left:20px">{{recaptchaError}}</span>
                                     </div>
                                 </div>
                             </div>
@@ -110,6 +111,7 @@
     import lang from 'dojo/_base/lang'
     import Logger from 'common/Logger'
     import NLS from 'common/NLS'
+    import Services from 'services/Services'
 
     export default {
         name: 'Splah',
@@ -118,7 +120,8 @@
         data: function () {
             return {
                 splashImage: null,
-                step: 0               
+                step: 0,
+                recaptchaError: ''               
             }
         },
         components: {},
@@ -128,6 +131,13 @@
             },
             hasSplash () {
                 return this.splashImage !== null
+            },
+            useRecaptcha () {
+                return this.settings && this.settings.useRecaptcha === true
+            },
+            recaptchaConfig () {
+                const config = Services.getConfig()
+                return config && config.recaptcha ? config.recaptcha : null
             },
             showTasks () {
                 if (this.settings && this.settings.showTaskInTest) {
@@ -154,7 +164,83 @@
         methods: {
 
             onStart (e) {
-                this.$emit("start", e)
+                if (this.useRecaptcha) {
+                    this.verifyRecaptcha().then(ok => {
+                        if (ok) {
+                            this.$emit("start", e)
+                        }
+                    })
+                } else {
+                    this.$emit("start", e)
+                }
+            },
+
+            loadRecaptchaScript () {
+                const config = this.recaptchaConfig
+                const siteKey = config && config.siteKey
+                if (window.grecaptcha && window.__quxRecaptchaKey === siteKey) {
+                    return Promise.resolve()
+                }
+                if (!siteKey) {
+                    return Promise.resolve()
+                }
+                if (!this._recaptchaPromise) {
+                    this._recaptchaPromise = new Promise(resolve => {
+                        const script = document.createElement('script')
+                        script.src = 'https://www.google.com/recaptcha/api.js?render=' + siteKey
+                        script.async = true
+                        script.defer = true
+                        script.onload = () => {
+                            window.__quxRecaptchaKey = siteKey
+                            resolve()
+                        }
+                        script.onerror = () => resolve()
+                        document.head.appendChild(script)
+                    })
+                }
+                return this._recaptchaPromise
+            },
+
+            verifyRecaptcha () {
+                this.recaptchaError = ''
+                const config = this.recaptchaConfig
+                if (!config || !config.siteKey) {
+                    this.recaptchaError = this.getNLS('simulator.recaptcha.errorNotConfigured')
+                    return Promise.resolve(false)
+                }
+                return this.loadRecaptchaScript().then(() => {
+                    return new Promise(resolve => {
+                        if (!window.grecaptcha) {
+                            this.recaptchaError = this.getNLS('simulator.recaptcha.errorNotConfigured')
+                            resolve(false)
+                            return
+                        }
+                        window.grecaptcha.ready(() => {
+                            window.grecaptcha.execute(config.siteKey, { action: 'usertest' }).then(token => {
+                                const base = (process.env.BASE_URL || '/').replace(/\/+$/, '')
+                                fetch(base + '/captcha/verify', {
+                                    method: 'POST',
+                                    credentials: "same-origin",
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ token: token })
+                                }).then(res => res.json()).then(data => {
+                                    if (data && data.success) {
+                                        resolve(true)
+                                    } else {
+                                        this.recaptchaError = this.getNLS('simulator.recaptcha.error')
+                                        resolve(false)
+                                    }
+                                }).catch(() => {
+                                    this.recaptchaError = this.getNLS('simulator.recaptcha.error')
+                                    resolve(false)
+                                })
+                            }).catch(() => {
+                                this.recaptchaError = this.getNLS('simulator.recaptcha.error')
+                                resolve(false)
+                            })
+                        })
+                    })
+                })
             },
 
             onShowPrivacy () {
@@ -221,6 +307,11 @@
             },
             settings (s) {
                 this.setTestsettings(s)
+            },
+            step (s) {
+                if (s === 5 && this.useRecaptcha) {
+                    this.loadRecaptchaScript()
+                }
             }
         },
         mounted () {

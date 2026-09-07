@@ -28,6 +28,12 @@
             "title": "Senha",
             "msg": "Para testar este protótipo você precisa de uma senha. Por favor, digite a senha e pressione <b>Próximo</b>",
             "next": "Próximo"
+        },
+        "recaptcha": {
+            "title": "Verificação de bot",
+            "msg": "Para iniciar o teste, confirme que você é humano.",
+            "error": "A verificação de bot falhou. Tente novamente.",
+            "errorNotConfigured": "A verificação de bot não está configurada. Entre em contato com o administrador."
         }
     },
     "toolbar": {

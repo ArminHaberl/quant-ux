@@ -1,4 +1,5 @@
 const http = require('http')
+const https = require('https')
 const express = require('express')
 const path = require('path')
 const compression = require('compression')
@@ -20,6 +21,9 @@ const keycloak_url = process.env.QUX_KEYCLOAK_URL || ''
 const sharedLibs = process.env.QUX_SHARED_LIBS || ''
 const userAllowSignUp = process.env.QUX_USER_ALLOW_SIGNUP !== 'false'
 const userAllowedDomains = process.env.QUX_USER_ALLOWED_DOMAINS || '*'
+const recaptchaSiteKey = process.env.QUX_RECAPTCHA_SITE_KEY || ''
+const recaptchaSecret = process.env.QUX_RECAPTCHA_SECRET || ''
+const recaptchaThreshold = (process.env.QUX_RECAPTCHA_THRESHOLD * 1) || 0.5
 
 /**
  *
@@ -46,12 +50,81 @@ app.get("/config.json", (_req, res) => {
       "allowSignUp": userAllowSignUp,
       "allowedDomains": userAllowedDomains
     },
+    "recaptcha": {
+      "siteKey": recaptchaSiteKey,
+      "threshold": recaptchaThreshold
+    },
     "keycloak": {
       "realm": keycloak_realm,
       "clientId": keycloak_client,
       "url": keycloak_url
     }
   })
+})
+
+/**
+ * Verify a reCAPTCHA token against the Google siteverify API.
+ * The secret key never leaves the server.
+ */
+function verifyRecaptcha (token, remoteip) {
+  return new Promise((resolve, reject) => {
+    const body = new URLSearchParams()
+    body.append('secret', recaptchaSecret)
+    body.append('response', token)
+    if (remoteip) {
+      body.append('remoteip', remoteip)
+    }
+    const data = body.toString()
+    const req = https.request({
+      hostname: 'www.google.com',
+      port: 443,
+      path: '/recaptcha/api/siteverify',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(data)
+      }
+    }, (res) => {
+      let raw = ''
+      res.on('data', (chunk) => {
+        raw += chunk
+      })
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(raw))
+        } catch (e) {
+          reject(e)
+        }
+      })
+    })
+    req.on('error', reject)
+    req.write(data)
+    req.end()
+  })
+}
+
+/**
+ * Fail-closed: if reCAPTCHA is not configured we reject the request,
+ * so a misconfigured admin notices instead of silently letting bots through.
+ */
+app.post("/captcha/verify", express.json(), async (req, res) => {
+  if (!recaptchaSecret || !recaptchaSiteKey) {
+    res.status(503).json({ success: false, error: 'recaptcha not configured' })
+    return
+  }
+  const token = req.body && req.body.token
+  if (!token) {
+    res.status(400).json({ success: false, error: 'missing token' })
+    return
+  }
+  try {
+    const data = await verifyRecaptcha(token, req.body && req.body.remoteip)
+    const success = data.success === true && data.score !== undefined && data.score >= recaptchaThreshold
+    res.json({ success: success, score: data.score })
+  } catch (e) {
+    console.error('recaptcha verify failed', e)
+    res.status(502).json({ success: false, error: 'recaptcha verify failed' })
+  }
 })
 
 /**
@@ -97,6 +170,7 @@ module.exports = server.listen(port, function (err) {
   console.log('Auth      : ' + auth)
   console.log('SignUp    : ' + userAllowSignUp)
   console.log('Domains   : ' + userAllowedDomains)
+  console.log('reCAPTCHA : ' + (recaptchaSiteKey ? 'enabled (threshold ' + recaptchaThreshold + ')' : 'disabled'))
 })
 
 

@@ -168,6 +168,12 @@
             "title": "Password",
             "msg": "To test this prototype you need a password. Please enter the password and press <b>Next</b>",
             "next": "Next"
+        },
+        "recaptcha": {
+            "title": "Bot check",
+            "msg": "To start the test, please confirm you are a human.",
+            "error": "The bot check failed. Please try again.",
+            "errorNotConfigured": "The bot check is not configured. Please contact the site administrator."
         }
     },
     "toolbar": {
@@ -584,6 +590,7 @@
     "testSettingsRegister": "Please register to save changes.",
     "testSettingsShowTaskInTest": "Show tasks during test.",
     "testSettingsShowSuccessInTest": "Show message when all tasks are completed.",
+    "testSettingsBotProtection": "Require bot check (reCAPTCHA) before the test.",
     "testSettingsNoFlow": "No Flow",
     "testSettingsFlow1": "Flow: ",
     "testSettingsFlow2": " steps",

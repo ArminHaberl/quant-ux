@@ -21,6 +21,9 @@ services:
       - QUX_KEYCLOAK_CLIENT=
       - QUX_KEYCLOAK_URL=
       - QUX_WS_URL=${QUX_WS_URL:-ws://localhost:8086}        # websocket URL, set real value in docker/.env
+      - QUX_RECAPTCHA_SITE_KEY=${QUX_RECAPTCHA_SITE_KEY:-}        # reCAPTCHA v3 site key, set real value in docker/.env
+      - QUX_RECAPTCHA_SECRET=${QUX_RECAPTCHA_SECRET:-}        # reCAPTCHA v3 secret key, set real value in docker/.env
+      - QUX_RECAPTCHA_THRESHOLD=${QUX_RECAPTCHA_THRESHOLD:-0.5}        # min score to pass (0.0-1.0); raise to force blocks for testing
     links:
       - mongo
       - qux-be
