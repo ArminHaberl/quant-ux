@@ -61,6 +61,8 @@ import lang from 'dojo/_base/lang'
 import SurveyTable from './SurveyTable'
 import SurveyDialog from './SurveyDialog'
 
+import { escapeCsv } from '../../../utils/csv';
+
 export default {
     name: 'SurveySection',
     mixins:[],
@@ -142,9 +144,9 @@ export default {
        downloadCVS () {
 
           const table = this.table
-          let csvContent = '#,' + table.cols.map(c => c.label).join(',') + "\n";
+          let csvContent = '#,' + table.cols.map(c => escapeCsv(c.label)).join(',') + "\n";
           csvContent += table.rows.map((row, r) => {
-            return r+ ',' + table.cols.map(c => row[c.key]).join(',')
+            return escapeCsv(r) + ',' + table.cols.map(c => escapeCsv(row[c.key])).join(',')
           }).join("\n")
 
           const blob = new Blob([csvContent], {

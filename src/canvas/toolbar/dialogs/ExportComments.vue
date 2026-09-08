@@ -42,6 +42,7 @@
 
 
 import Logger from 'common/Logger'
+import { escapeCsv } from '../../../utils/csv';
 import ModelGeom from 'core/ModelGeom'
 import lang from 'dojo/_base/lang'
 //   import ZipSevice from 'services/ZipService'
@@ -76,10 +77,11 @@ export default {
 
         download () {
          
-            let csvContent = 'Comment\tUser\tDate\tScreen\n'
+            const headers = ['Comment','User','Date','Screen'];
+            let csvContent = headers.map(escapeCsv).join('\t') + '\n';
 
             csvContent += this.screenComments.map((c) => {
-                return `${c.message}\t${c.userName}\t${c.date}\t${c.screen}`
+                return [escapeCsv(c.message), escapeCsv(c.userName), escapeCsv(c.date), escapeCsv(c.screen)].join('\t')
             }).join("\n")
 
             const downloadFileName = this.model.name + '.csv'

@@ -37,6 +37,7 @@ import DataFrame from "common/DataFrame";
 import TaskPerfGram from "views/apps/analytics/TaskPerfGram";
 import TestSettings from "views/apps/test/TestSettings";
 import Analytics from "dash/Analytics";
+import { escapeCsv } from '../../../utils/csv';
 import HelpButton from "help/HelpButton";
 
 
@@ -77,8 +78,8 @@ export default {
     },
 
     downloadCVS () {
-      var csvContent =
-        "Name,Start, Success,Duration (Mean),Duration (Median), Duration (STD),Events (Mean), Events (STD)\n";
+      const headers = ["Name","Start","Success","Duration (Mean)","Duration (Median)","Duration (STD)","Events (Mean)","Events (STD)"];
+      let csvContent = headers.map(escapeCsv).join(",") + "\n";
 
       const tasks = this.test.tasks;
       const analytics = new Analytics();
@@ -87,15 +88,16 @@ export default {
 
       for (let i = 0; i < summaries.length; i++) {
         const summary = summaries[i];
-        csvContent += summary.label + ",";
-        csvContent += summary.startCount + " / " + summary.sessionCount + ",";
-        csvContent += summary.value + " / " + summary.sessionCount + ",";
-        csvContent += this.formatNumber(summary.durationMean / 1000) + ",";
-        csvContent += this.formatNumber(summary.durationMedian / 1000) + ",";
-        csvContent += this.formatNumber(summary.durationStd / 1000) + ",";
-        csvContent += this.formatNumber(summary.countMean) + ",";
-        csvContent += this.formatNumber(summary.countStd) + "";
-        csvContent += "\n";
+        csvContent += [
+          escapeCsv(summary.label),
+          escapeCsv(summary.startCount + " / " + summary.sessionCount),
+          escapeCsv(summary.value + " / " + summary.sessionCount),
+          escapeCsv(this.formatNumber(summary.durationMean / 1000)),
+          escapeCsv(this.formatNumber(summary.durationMedian / 1000)),
+          escapeCsv(this.formatNumber(summary.durationStd / 1000)),
+          escapeCsv(this.formatNumber(summary.countMean)),
+          escapeCsv(this.formatNumber(summary.countStd))
+        ].join(",") + "\n";
       }
 
       csvContent += "\n\n\n\n";
@@ -103,13 +105,14 @@ export default {
       /**
        * Perf stats
        */
-      csvContent += "Test, Task, Interactions, Duration\n";
+      csvContent += ["Test","Task","Interactions","Duration"].map(escapeCsv).join(",") + "\n";
       perf.foreach(row => {
-        csvContent += row["session"] + ",";
-        csvContent += row["taskName"] + ",";
-        csvContent += row["interactions"] + ",";
-        csvContent += this.formatNumber(row["duration"] / 1000) + "";
-        csvContent += "\n";
+        csvContent += [
+          escapeCsv(row["session"]),
+          escapeCsv(row["taskName"]),
+          escapeCsv(row["interactions"]),
+          escapeCsv(this.formatNumber(row["duration"] / 1000))
+        ].join(",") + "\n";
       });
 
 
