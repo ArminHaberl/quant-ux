@@ -33,7 +33,7 @@
                     v-model="test.description"
                     data-gramm_editor="false"
                     @change="onTestChange"
-                    placeholder="Enter here a welcome message for your testers."
+                    placeholder="Enter custom welcome message (HTML allowed)."
                   />
               
                   <div class="MatcLayoutCol3" >
@@ -48,6 +48,16 @@
                           <input type="file" v-if="!hasSplash" @change="onFileChanged" >
                       </div>
                   </div>
+            </div>
+            <div class="MatcLayoutCols mb-32">
+                <textarea
+                    class="form-control MatcTextAreaMedium MatcLayoutColGrow"
+                    v-model="test.privacyMessage"
+                    data-gramm_editor="false"
+                    @change="onTestChange"
+                    placeholder="Enter custom privacy message (HTML allowed)."
+                  />
+                <div class="MatcLayoutCol3" />
             </div>
 
             <div class="form-group ">
@@ -137,6 +147,8 @@ export default {
       sessionCount: 10,
       hasDragOver: false,
       isUploading: false,
+      hasDragOverPrivacy: false,
+      isPrivacyPdfUploading: false,
       hasComments: false,
       bulletGraphSection: [
         {
@@ -190,6 +202,21 @@ export default {
         return this.getNLS('test.splash.uploading')
       }
       return this.getNLS('test.splash.upload')
+    },
+    hasPrivacyPdf () {
+      return this.test && this.test.privacyPdf
+    },
+    privacyPdfUrl () {
+      if (this.test && this.test.privacyPdf && this.hash) {
+        return '/rest/images/' + this.hash + '/' + this.test.privacyPdf.url
+      }
+      return ''
+    },
+    privacyPdfMessage () {
+      if (this.isPrivacyPdfUploading) {
+        return 'Uploading PDF...';
+      }
+      return 'Drop privacy PDF';
     }
   },
   methods: {
@@ -236,6 +263,54 @@ export default {
         await this.imageService.delete(this.app, this.test.splash)
       }
       delete this.test.splash
+      this.onTestChange()
+    },
+    onDragEnterPrivacy () {
+      this.hasDragOverPrivacy = true
+    },
+    onDragLeavePrivacy () {
+      this.hasDragOverPrivacy = false
+    },
+    onDropPrivacy (e) {
+      this.logger.log(-1, 'onDropPrivacy', 'enter', e)
+      e.stopPropagation()
+      e.preventDefault()
+      let files = e.dataTransfer.files
+      this.hasDragOverPrivacy = false
+      this.uploadPrivacyPdf(files)
+    },
+    onFileChangedPrivacy (e) {
+      let files = e.target.files
+      this.uploadPrivacyPdf(files)
+    },
+    async uploadPrivacyPdf(files) {
+      this.logger.log(-1, 'uploadPrivacyPdf', 'enter', files)
+      if (files.length === 1) {
+        this.isPrivacyPdfUploading = true
+        let file = files[0]
+        let url = '/rest/images/' + this.app.id + '?resize=false';
+        let formData = new FormData();
+        formData.append('file', file);
+        try {
+          let result = await this.imageService.upload(url, formData)
+          result = JSON.parse(result)
+          if (result.uploads && result.uploads.length === 1) {
+            this.test.privacyPdf = result.uploads[0]
+            this.onTestChange()
+          }
+        } catch (err) {
+          this.showError("PDF upload failed");
+        }
+        this.isPrivacyPdfUploading = false
+      } else {
+        this.showError("Upload a single PDF file");
+      }
+    },
+    async onRemovePrivacyPdf () {
+      if (this.test.privacyPdf) {
+        await this.imageService.delete(this.app, this.test.privacyPdf)
+      }
+      delete this.test.privacyPdf
       this.onTestChange()
     },
     onTaskChange(test) {
@@ -515,6 +590,7 @@ export default {
     this.logger = new Logger("Test");
     this.modelService = Services.getModelService(this.$route);
     this.imageService = Services.getImageService()
+    this.uploadService = Services.getUploadService()
     this.showBullet();
     this.showSessions();
     this.logger.info("mounted", "exit");

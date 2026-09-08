@@ -34,9 +34,7 @@
                                 <div class="MatcTestContent" v-if="step === 3">
                                     <div class="MatcTestContentCntr">
                                         <h2> {{getNLS("simulator.welcome.title")}}</h2>
-                                        <p v-if="settings.description">
-                                            {{settings.description}}
-                                        </p>
+                                        <div v-if="settings && settings.description" v-html="sanitizeText(settings.description)"></div>
                                         <template  v-else>
                                             <p v-html="getNlSWithReplacement('simulator.welcome.msg', {'name': model.name})"></p>
                                             <p v-html="getNlSWithReplacement('simulator.welcome.msg2', {'name': model.name})"></p>
@@ -77,9 +75,14 @@
                                 <div class="MatcTestContent" v-if="step === 5">
                                     <div class="MatcTestContentCntr">
                                         <h2> {{getNLS("simulator.welcome.privacy-title")}}</h2>
-                                        <p v-html="getNLS('simulator.welcome.privacy')"></p>
-                                        <p v-html="getNLS('simulator.welcome.privacy1')"></p>
-                                        <p class="MatcMarginTopXL" v-html="getNLS('simulator.welcome.click-start')"></p>
+                                        <template v-if="settings && settings.privacyMessage">
+                                            <div v-html="sanitizeText(settings.privacyMessage)"></div>
+                                        </template>
+                                        <template v-else>
+                                            <p v-html="getNLS('simulator.welcome.privacy')"></p>
+                                            <p v-html="getNLS('simulator.welcome.privacy1')"></p>
+                                        </template>
+                                        <p v-if="!settings || !settings.privacyMessage" class="MatcMarginTopXL" v-html="getNLS('simulator.welcome.click-start')"></p>
                                     </div>
                                     <div class="MatcMarginTop">
                                         <div class="MatcButton MatcButtonPrimary MatcTestStartButton"	@click="onStart()">
@@ -112,6 +115,7 @@
     import Logger from 'common/Logger'
     import NLS from 'common/NLS'
     import Services from 'services/Services'
+    import sanitizeHtml from 'sanitize-html';
 
     export default {
         name: 'Splah',
@@ -163,6 +167,9 @@
         },
         methods: {
 
+            sanitizeText (text) {
+                return sanitizeHtml(text);
+            },
             onStart (e) {
                 if (this.useRecaptcha) {
                     this.verifyRecaptcha().then(ok => {
