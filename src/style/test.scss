@@ -168,6 +168,11 @@
 	text-align: center;
 }
 
+.MatcTestStartButtonDisabled{
+	opacity: 0.6;
+	pointer-events: none;
+}
+
 
 
 .MatcTest .MatchSimulatorWrapper{

@@ -42,13 +42,14 @@
                                   
                                     </div>
                                     <div class="MatcMarginTop">
-                                        <div class="MatcButton MatcButtonPrimary MatcTestStartButton"	@click="onShowPrivacy()"	v-if="getUserTasks().length === 0">
-                                                {{getNLS("simulator.welcome.next")}}
+                                        <div class="MatcButton MatcButtonPrimary MatcTestStartButton" :class="{'MatcTestStartButtonDisabled': recaptchaPending}"	@click="onShowPrivacy()"	v-if="getUserTasks().length === 0">
+                                                {{recaptchaPending ? getNLS("simulator.recaptcha.pending") : getNLS("simulator.welcome.next")}}
                                         </div>
-                                        <div class="MatcButton MatcButtonPrimary MatcTestStartButton"	@click="onShowTasks()" v-else>
-                                                {{getNLS("simulator.welcome.showTasks")}}
+                                        <div class="MatcButton MatcButtonPrimary MatcTestStartButton" :class="{'MatcTestStartButtonDisabled': recaptchaPending}"	@click="onShowTasks()" v-else>
+                                                {{recaptchaPending ? getNLS("simulator.recaptcha.pending") : getNLS("simulator.welcome.showTasks")}}
                                         </div>
                                     </div>
+                                    <span v-if="recaptchaError" class="MatcError" style="margin-left:20px">{{recaptchaError}}</span>
                                 </div>
                                 <div class="MatcTestContent" v-if="step === 4">
                                     <div class="MatcTestContentCntr">
@@ -88,7 +89,6 @@
                                         <div class="MatcButton MatcButtonPrimary MatcTestStartButton"	@click="onStart()">
                                                 {{getNLS("simulator.welcome.start")}}
                                         </div>
-                                        <span v-if="recaptchaError" class="MatcError" style="margin-left:20px">{{recaptchaError}}</span>
                                     </div>
                                 </div>
                             </div>
@@ -125,7 +125,9 @@
             return {
                 splashImage: null,
                 step: 0,
-                recaptchaError: ''               
+                recaptchaError: '',
+                recaptchaPending: false,
+                recaptchaPassed: false
             }
         },
         components: {},
@@ -171,15 +173,27 @@
                 return sanitizeHtml(text);
             },
             onStart (e) {
-                if (this.useRecaptcha) {
-                    this.verifyRecaptcha().then(ok => {
-                        if (ok) {
-                            this.$emit("start", e)
-                        }
-                    })
-                } else {
-                    this.$emit("start", e)
+                this.$emit("start", e)
+            },
+
+            passBotCheck (onPass) {
+                if (this.recaptchaPending) {
+                    return
                 }
+                if (this.recaptchaPassed || !this.useRecaptcha) {
+                    onPass()
+                    return
+                }
+                this.recaptchaPending = true
+                this.verifyRecaptcha().then(ok => {
+                    this.recaptchaPending = false
+                    if (ok) {
+                        this.recaptchaPassed = true
+                        onPass()
+                    }
+                }).catch(() => {
+                    this.recaptchaPending = false
+                })
             },
 
             loadRecaptchaScript () {
@@ -230,11 +244,13 @@
                                     credentials: "same-origin",
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ token: token })
-                                }).then(res => res.json()).then(data => {
-                                    if (data && data.success) {
+                                }).then(res => res.json().then(data => ({ status: res.status, data: data }))).then(result => {
+                                    if (result.data && result.data.success) {
                                         resolve(true)
                                     } else {
-                                        this.recaptchaError = this.getNLS('simulator.recaptcha.error')
+                                        this.recaptchaError = this.getNLS(result.status === 503
+                                            ? 'simulator.recaptcha.errorNotConfigured'
+                                            : 'simulator.recaptcha.error')
                                         resolve(false)
                                     }
                                 }).catch(() => {
@@ -251,11 +267,15 @@
             },
 
             onShowPrivacy () {
-                this.step = 5
+                this.passBotCheck(() => {
+                    this.step = 5
+                })
             },
 
             onShowTasks (){
-                this.step = 4
+                this.passBotCheck(() => {
+                    this.step = 4
+                })
             },
      
             setTestsettings (settings){
@@ -316,7 +336,7 @@
                 this.setTestsettings(s)
             },
             step (s) {
-                if (s === 5 && this.useRecaptcha) {
+                if (s === 3 && this.useRecaptcha) {
                     this.loadRecaptchaScript()
                 }
             }

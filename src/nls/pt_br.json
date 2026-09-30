@@ -32,6 +32,7 @@
         "recaptcha": {
             "title": "Verificação de bot",
             "msg": "Para iniciar o teste, confirme que você é humano.",
+            "pending": "Verificando…",
             "error": "A verificação de bot falhou. Tente novamente.",
             "errorNotConfigured": "A verificação de bot não está configurada. Entre em contato com o administrador."
         }

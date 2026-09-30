@@ -31,6 +31,7 @@
         "recaptcha": {
             "title": "Bot check",
             "msg": "To start the test, please confirm you are a human.",
+            "pending": "Checking…",
             "error": "The bot check failed. Please try again.",
             "errorNotConfigured": "The bot check is not configured. Please contact the site administrator."
         }

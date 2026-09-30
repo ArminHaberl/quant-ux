@@ -46,6 +46,7 @@
       "recaptcha": {
           "title": "Bot-Prüfung",
           "msg": "Bitte bestätigen Sie, dass Sie ein Mensch sind, um den Test zu starten.",
+          "pending": "Wird geprüft…",
           "error": "Die Bot-Prüfung ist fehlgeschlagen. Bitte versuchen Sie es erneut.",
           "errorNotConfigured": "Die Bot-Prüfung ist nicht konfiguriert. Bitte kontaktieren Sie den Administrator."
       }
