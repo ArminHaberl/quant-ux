@@ -42,7 +42,7 @@
                                   
                                     </div>
                                     <div class="MatcMarginTop">
-                                        <div class="MatcButton MatcButtonPrimary MatcTestStartButton" :class="{'MatcTestStartButtonDisabled': recaptchaPending}"	@click="onShowPrivacy()"	v-if="getUserTasks().length === 0">
+                                        <div class="MatcButton MatcButtonPrimary MatcTestStartButton" :class="{'MatcTestStartButtonDisabled': recaptchaPending}"	@click="onNext()"	v-if="getUserTasks().length === 0">
                                                 {{recaptchaPending ? getNLS("simulator.recaptcha.pending") : getNLS("simulator.welcome.next")}}
                                         </div>
                                         <div class="MatcButton MatcButtonPrimary MatcTestStartButton" :class="{'MatcTestStartButtonDisabled': recaptchaPending}"	@click="onShowTasks()" v-else>
@@ -68,7 +68,7 @@
                                     </div>
     
                                     <div class="MatcMarginTop">
-                                        <div class="MatcButton MatcButtonPrimary MatcTestStartButton" @click="onShowPrivacy()">
+                                        <div class="MatcButton MatcButtonPrimary MatcTestStartButton" @click="onNext()">
                                             {{getNLS("simulator.welcome.next")}}
                                         </div>
                                     </div>
@@ -153,6 +153,9 @@
             },
             hasSettings () {
                 return this.settings !== null
+            },
+            skipPrivacy () {
+                return this.settings && this.settings.skipPrivacyPage === true
             },
             menuWidth () {
                 if (this.settings && this.settings.showTaskInTest) {
@@ -266,9 +269,13 @@
                 })
             },
 
-            onShowPrivacy () {
+            onNext () {
                 this.passBotCheck(() => {
-                    this.step = 5
+                    if (this.skipPrivacy) {
+                        this.onStart()
+                    } else {
+                        this.step = 5
+                    }
                 })
             },
 

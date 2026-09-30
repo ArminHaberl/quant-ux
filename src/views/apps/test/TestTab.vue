@@ -68,6 +68,10 @@
             <CheckBox :value="test.useRecaptcha" :label="getNLS('testSettingsBotProtection')" @change="setRecaptcha"/>
           </div>
 
+          <div class="form-group ">
+            <CheckBox :value="test.skipPrivacyPage" :label="getNLS('testSettingsSkipPrivacyPage')" @change="setSkipPrivacyPage"/>
+          </div>
+
         
       </div>
     </section>
@@ -323,6 +327,10 @@ export default {
     setRecaptcha(value) {
       this.test.useRecaptcha = value
       this.onTestChange()
+    },
+    setSkipPrivacyPage(value) {
+        this.test.skipPrivacyPage = value
+        this.onTestChange()
     },
     setTranscribeVoice(value) {
       this.test.transcribeVoice = value

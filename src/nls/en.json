@@ -592,6 +592,7 @@
     "testSettingsShowTaskInTest": "Show tasks during test.",
     "testSettingsShowSuccessInTest": "Show message when all tasks are completed.",
     "testSettingsBotProtection": "Require bot check (reCAPTCHA) before the test.",
+    "testSettingsSkipPrivacyPage": "Skip the privacy page in the test start screen.",
     "testSettingsNoFlow": "No Flow",
     "testSettingsFlow1": "Flow: ",
     "testSettingsFlow2": " steps",
