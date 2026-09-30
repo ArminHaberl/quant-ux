@@ -1,5 +1,6 @@
 import lang from '../dojo/_base/lang'
 import Logger from './Logger'
+import { getContainerSuffix } from '../util/WidgetTreeUtil'
 
 class ModelUtil {
 
@@ -589,7 +590,7 @@ class ModelUtil {
     }
 
     updateErrorLabelsInScreen(scrn, model) {
-        if (!scrn.children) {
+        if (!scrn.children || !scrn.id) {
             return
         }
         scrn.children.forEach(id => {
@@ -603,9 +604,22 @@ class ModelUtil {
                     const errorLabels = widget.props.refs.errorLabels
                     if (errorLabels) {
                         /**
-                         * Update all error labels by adding the current screen id
+                         * Update all error labels by adding the current screen id.
+                         * Inheritance copies are registered as id + "@" + screenID
+                         * (see Core.createInheritedModel), so the screen id is what
+                         * belongs here, not its name.
                          */
-                        const inheritedErrorLabels = errorLabels.map(l => l + '@' + screen.id)
+                        const inheritedErrorLabels = errorLabels.map(l => {
+                            /**
+                             * Already points at a copy. Leave it and let
+                             * UIWidget.resolveRefID deal with it, rather than
+                             * mangling twice into something like w2@s1@s1.
+                             */
+                            if (getContainerSuffix(l)) {
+                                return l
+                            }
+                            return l + '@' + scrn.id
+                        })
                         widget.props.refs.errorLabels = inheritedErrorLabels
                     }
                 }
