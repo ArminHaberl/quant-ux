@@ -84,8 +84,15 @@ export default {
 		init () {
 			if (this.app) {
 				this.setModel(this.app)
-				let events = this.analytics.nornalizeContainerChildEvents(this.eventsWithAnnimations)
-				var df = new DataFrame(events);
+				/**
+				 * Events are used as recorded. Do not normalise container child ids
+				 * here: a ScreenSegment or Repeater copy is registered under its
+				 * mangled id, and setWidgetState has to look it up under that same
+				 * id. Stripping the suffix made every copy state miss, so
+				 * repeaters never replayed. Names are resolved at display time
+				 * instead, via analytics.toModelWidgetID.
+				 */
+				var df = new DataFrame(this.eventsWithAnnimations);
 				var sessionGroup = df.groupBy("session");
 				var session = sessionGroup.get(this.sessionID);
 				this.mouseData = this.mouse
@@ -556,7 +563,6 @@ export default {
 			var screenScoll = {};
 
 
-
 			for(let i=0; i <this.events.length;i++){
 				let event = this.events[i];
 				let screenID = event.screen;
@@ -703,6 +709,7 @@ export default {
 			this._touchedWidgets = touchedWidgetsByEvent;
 			this._overLayStates = overlayStatesByEvent;
 			this._scrollStates = screenScoll;
+
 
 			this.logger.log(2, "initWidgetStatesAndScroll", "exit");
 		},
@@ -1004,7 +1011,8 @@ export default {
 							} else {
 								txt += " - " + this.getEventLabel(e.type);
 							}
-							let widget = this.model.widgets[e.widget];
+							let widget = this.model.widgets[e.widget] ||
+							this.model.widgets[this.analytics.toModelWidgetID(e.widget)];
 							if(widget){
 								txt +=" -  &quot;" + widget.name+"&quot;";
 							} else {
@@ -1026,7 +1034,8 @@ export default {
 							} else {
 								txt += " - " + this.getGestureLabel(gesture.type) + " - &quot;" + e.screen +"&quot;";
 							}
-							let widget = this.model.widgets[e.widget];
+							let widget = this.model.widgets[e.widget] ||
+							this.model.widgets[this.analytics.toModelWidgetID(e.widget)];
 							if(widget){
 								txt +=" -  &quot;" + widget.name+"&quot;";
 							} else {

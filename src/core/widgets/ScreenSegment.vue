@@ -183,15 +183,29 @@ export default {
         return
       }
       /**
-       * Take the range from the content height rather than domNode.scrollHeight.
-       * The latter is unusable here: whenever simplebar has re-parented the
-       * content it reports 570, the same as clientHeight, so the segment looks
-       * like it has nothing to scroll. The content height is correct in both
-       * cases and does not care whether the inner container resolves as
-       * position absolute, which is what the player sees, or static, which is
-       * what simplebar forces.
+       * Measure how far the content actually reaches, not how tall the
+       * embedded screen claims to be. The inner container is built with the
+       * target screen's declared height, but its children are absolutely
+       * positioned and can sit below that, so a screen declared shorter than
+       * its own content would never scroll far enough to reveal the lower
+       * part. A consent form is the obvious case: the boxes sit well down the
+       * page, so if the range is short they never come into view at all.
+       *
+       * Cannot use domNode.scrollHeight either, that is 570 whenever simplebar
+       * has re-parented the content, so the segment looks like it has nothing
+       * to scroll. And this stays correct whether the inner container computes
+       * as position absolute, which is what the player sees, or static, which
+       * is what simplebar forces.
        */
-      const contentH = this.cntr.offsetHeight || this.domNode.scrollHeight
+      let contentH = this.cntr.offsetHeight
+      const children = this.cntr.children
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i]
+        const bottom = child.offsetTop + child.offsetHeight
+        if (bottom > contentH) {
+          contentH = bottom
+        }
+      }
       const range = Math.max(0, contentH - this.domNode.clientHeight)
       this.cntr.style.top = -value * range + "px"
     },

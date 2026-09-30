@@ -3,6 +3,7 @@ import DataFrame from '../common/DataFrame'
 import Grouping from '../common/Grouping'
 import PerformanceMonitor from '../core/PerformanceMonitor'
 import { sanitizeObjectKey } from '../common/SanitizeUtil'
+import { getContainerSuffix } from '../util/WidgetTreeUtil'
 
 
 export default class {
@@ -191,7 +192,22 @@ export default class {
 			result.cols.forEach(c => row[c] = '-')
 			
 			df.sortBy("time");
-			const sessionEvents = df.as_array();
+			/**
+			 * Container children (ScreenSegment, Repeater) are recorded under a
+			 * mangled id, which matches nothing in app.widgets, so every sample
+			 * for them was dropped and their survey column stayed empty. Work on
+			 * copies carrying the id the model knows, so the lookups below line
+			 * up, without mutating the caller's events.
+			 *
+			 * A Repeater renders N copies that all map to the same widget, so
+			 * they collapse into one column and the last sample wins.
+			 */
+			const sessionEvents = df.as_array().map(e => {
+				if (!e || !e.widget) { return e }
+				const modelID = this.toModelWidgetID(e.widget)
+				if (modelID === e.widget) { return e }
+				return Object.assign({}, e, { widget: modelID })
+			});
 			sessionEvents.forEach(e => {
 				delete e.user
 				if (app.widgets[e.widget]) {
@@ -281,6 +297,31 @@ export default class {
 		return typeof obj === 'object' && obj !== null && ! Array.isArray(obj)
 	}
 
+	/**
+	 * The widget id as the model stores it.
+	 *
+	 * Containers render their children as copies under a mangled id, so events
+	 * recorded against them do not match anything in model.widgets: Repeater
+	 * uses childID + "-" + index, ScreenSegment childID + "@" + screen name, and
+	 * screen inheritance childID + "@" + screen id. Anything that has to line an
+	 * event up with the model needs this first.
+	 *
+	 * The reverse also holds and matters: the replay must keep the rendered id,
+	 * because that is the id the copy is registered under. Use this for lookups
+	 * against the model, never to rewrite an event that is about to be looked
+	 * up on a live widget.
+	 */
+	toModelWidgetID (id) {
+		const suffix = getContainerSuffix(id)
+		return suffix ? id.slice(0, id.length - suffix.length) : id
+	}
+
+	/**
+	 * @deprecated rewrites events in place and only understands the Repeater
+	 * suffix, so it silently leaves ScreenSegment children mangled. Worse, it
+	 * strips ids the replay needs to stay mangled. Prefer toModelWidgetID at the
+	 * point of lookup.
+	 */
 	nornalizeContainerChildEvents (events) {
 		events.forEach(e => {
 			if (e.widget && e.widget.indexOf('-') > 0) {
