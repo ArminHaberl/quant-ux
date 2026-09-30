@@ -23,6 +23,7 @@
   import Services from 'services/Services'
   import io from 'dojo/io'
   import Core from 'core/Core'
+  import { collectRenderedWidgetIDs } from '../util/WidgetTreeUtil'
   import RestMixin from 'core/simulator/RestMixin'
   import LogMixin from 'core/simulator/LogMixin'
   import RenderMixin from 'core/simulator/RenderMixin'
@@ -1004,18 +1005,31 @@
   
 				  if (screen){
 					  let isValid = true;
-					  let children = screen.children;
-					  for (let i=0; i < children.length; i++){
-						  let childID = children[i];
+					  /**
+					   * Descend into container children (ScreenSegment, Repeater).
+					   * They render copies of their children under a mangled id, so
+					   * the originals are not in the registry and were silently
+					   * skipped before. Collecting from the live widget tree is the
+					   * inverse of RenderMixin.wireContainer().
+					   */
+					  const ids = collectRenderedWidgetIDs(
+						  screen.children,
+						  lang.hitch(this.renderFactory, 'getUIWidgetByID')
+					  );
+					  ids.forEach(childID => {
 						  let uiWidget = this.renderFactory.getUIWidgetByID(childID);
 						  if (uiWidget){
+							  /**
+							   * Always validate, even once we know the screen is invalid,
+							   * so every error label shows at once.
+							   */
 							  let uiWidgetValid = uiWidget.isValid(true);
 							  isValid = isValid && uiWidgetValid;
 							  if (!uiWidgetValid){
 								  this.logger.log(-2,"canPerformTransition","validate error > " + uiWidget.model.name);
 							  }
 						  }
-					  }
+					  });
 					  return isValid;
 				  }
 			  }

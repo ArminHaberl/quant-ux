@@ -13,6 +13,7 @@ import Gestures from "core/Gestures";
 import Logger from 'common/Logger'
 import on from "dojo/on";
 import touch from "dojo/touch";
+import { getContainerSuffix, resolveContainerID } from "../../util/WidgetTreeUtil";
 
 
 const styleKeysForResize = [
@@ -567,13 +568,31 @@ export default {
       return this.lastValidation;
     },
 
+    /**
+     * Translate a ref id that was authored in the model into the id this widget
+     * was actually rendered under. Container children (ScreenSegment, Repeater)
+     * are rendered as copies with a mangled id, so refs pointing at siblings
+     * inside the same container have to be mangled the same way.
+     */
+    resolveRefID (id) {
+      if (!this.factory) {
+        return id;
+      }
+      const suffix = getContainerSuffix(this.model && this.model.id);
+      return resolveContainerID(
+        id,
+        suffix,
+        lang.hitch(this.factory, "hasRenderedWidget")
+      );
+    },
+
     getRef (id) {
       if (this.model.props.refs && this.model.props.refs[id]) {
         var refs = this.model.props.refs[id];
         //				if(refs.length == 1){
         //					return refs[0];
         //				}
-        return refs;
+        return refs.map(ref => this.resolveRefID(ref));
       }
       return null;
     },
@@ -586,7 +605,9 @@ export default {
           this.model.props.validation.errorLabels
         ) {
           console.warn("getErrorLabels() > legacy code!!!", this.model.id);
-          errorLabels = this.model.props.validation.errorLabels;
+          errorLabels = this.model.props.validation.errorLabels.map(ref =>
+            this.resolveRefID(ref)
+          );
         }
       }
       return errorLabels;

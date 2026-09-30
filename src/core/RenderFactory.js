@@ -246,6 +246,16 @@ export default class RenderFactory extends Core {
 		return this._uiWidgets[id];
 	}
 
+	/**
+	 * Is anything rendered under this id? Widgets land in different registries
+	 * depending on how they are created: class based ones (Label, TextBox) only
+	 * in _uiWidgets, pure DOM ones (Button, Box) also in _widgetNodes, and
+	 * inline editable labels in _labelNodes.
+	 */
+	hasRenderedWidget(id) {
+		return !!(this._uiWidgets[id] || this._widgetNodes[id] || this._labelNodes[id]);
+	}
+
 	getWidgetNodeByID(id) {
 		return this._widgetNodes[id];
 	}
