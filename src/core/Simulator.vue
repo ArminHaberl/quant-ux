@@ -1160,7 +1160,7 @@
 		  destroy (){
 			  this.logger.log(-1,"destroy","enter");
 			  this.isDestroyed = true;
-			  this.sendMouse();
+			  this.flushMouse(true);
 			  this.cleanUpTempListener();
 			  this.cleanUpGestureScreenAnim();
 			  this.cleanUpAnimations();

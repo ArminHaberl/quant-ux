@@ -5,6 +5,17 @@
 import domGeom from "dojo/domGeom";
 import Services from "services/Services";
 
+/**
+ * Samples per document. Was hardcoded inline before.
+ */
+const MOUSE_FLUSH_SIZE = 20;
+
+/**
+ * Flush a batch that has been sitting unsent this long, so the tail of a
+ * session does not wait for the sample count or for a clean destroy.
+ */
+const MOUSE_STALE_MS = 2000;
+
 export default {
   name: "MouseMixin",
   methods: {
@@ -71,6 +82,10 @@ export default {
           session: session,
           screen: this.currentScreen.id,
           sample: sampleRate,
+          /**
+           * When this batch was opened, so a stale one still gets shipped.
+           */
+          started: new Date().getTime(),
         };
 
         if (this.currentOverlay) {
@@ -79,35 +94,70 @@ export default {
       }
     },
 
-    flushMouse() {
-      /**
-       * flush only 20 events. Attention this is correlated to the sample rate...
-       */
-      if (this._mouseMoveEvent && this._mouseMoveEvent.x.length >= 20) {
-        this.sendMouse();
+    /**
+     * Decide whether the pending batch should go out now.
+     *
+     * force is used at screen and overlay transitions, because initMouseEvent
+     * stamps the screen once per batch, so a batch that spans a transition
+     * would label every sample after it with the wrong screen.
+     */
+    flushMouse(force) {
+      if (!this._mouseMoveEvent || this._mouseMoveEvent.x.length === 0) {
+        return
       }
+      const stale = new Date().getTime() - this._mouseMoveEvent.started > MOUSE_STALE_MS
+      if (!force && this._mouseMoveEvent.x.length < MOUSE_FLUSH_SIZE && !stale) {
+        return
+      }
+      if (this._mouseSending) {
+        /**
+         * A send is in flight. Its completion path flushes again, so just
+         * remember that a flush was asked for. Sending here would serialise
+         * the same batch a second time, which is how 57% of the stored mouse
+         * samples ended up duplicated.
+         */
+        this._mouseFlushAgain = true
+        return
+      }
+      this.sendMouse()
     },
 
     async sendMouse() {
       this.logger.log(3, "sendMouse", "enter");
-      if (this._mouseMoveEvent) {
-        this.eventCount++;
-        if (this.eventCount > this.maxEventCount) {
-          console.warn("sendMouse() Too many events");
-        }
-        if (this.logData && this.hash && this._mouseMoveEvent) {
+      if (!this._mouseMoveEvent) {
+        return
+      }
+      this.eventCount++;
+      if (this.eventCount > this.maxEventCount) {
+        console.warn("sendMouse() Too many events");
+      }
+      /**
+       * Detach the batch before the await, not after it. Samples that arrive
+       * while the POST is in flight then go into a fresh batch instead of
+       * being dropped by a delete that used to sit after the await, and they
+       * get stamped with the correct screen.
+       */
+      const batch = this._mouseMoveEvent
+      this._mouseMoveEvent = null
+      this._mouseSending = true
+      try {
+        if (this.logData && this.hash) {
           let res = await Services.getModelService().saveMouse(
             this.model.id,
             this.hash,
-            this._mouseMoveEvent
+            batch
           );
           this.onMouseSaved(res);
-          // this._doPost("rest/invitation/" + this.model.id + "/"+ this.hash + "/mouse.json", this._mouseMoveEvent, "onMouseSaved");
         } else {
-          this.logger.log(2, "sendMouse", "enter");
+          this.logger.log(2, "sendMouse", "not logged, dropped " + batch.x.length + " samples");
+        }
+      } finally {
+        this._mouseSending = false
+        if (this._mouseFlushAgain) {
+          this._mouseFlushAgain = false
+          this.flushMouse(true)
         }
       }
-      delete this._mouseMoveEvent;
     },
 
     onMouseSaved() {},

@@ -182,7 +182,7 @@ export default {
 			/**
 			 * we force to send the mouse!!
 			 */
-			this.sendMouse();
+			this.flushMouse();
 		},
 
 		async saveEventWithRetry (event, maxRetries = 3) {

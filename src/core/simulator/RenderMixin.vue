@@ -645,7 +645,7 @@
 			  * make sure the mouse events are flushed and correctly associated with an screen!
 			  */
 			  var oldScreenDiv = this.currentScreenDiv
-			  this.sendMouse();
+			  this.flushMouse(true);
 			  this.lastScreen = this.currentScreen;
 			  this.currentScreen = screen;
 			  this.currentScreenDiv = div;
@@ -691,7 +691,7 @@
   
   
 		  addOverlay (overlay, div, line){
-			  this.sendMouse();
+			  this.flushMouse(true);
   
 			  this.currentOverlay = overlay;
 			  this.currentOverlayDiv = div;
@@ -737,7 +737,7 @@
 		  popOverlay (){
   
 			  if (this.overlays && this.overlays.length > 0){
-				  this.sendMouse();
+				  this.flushMouse(true);
 				  this.logger.log(1,"popOverlay","enter >");
 				  var overlay = this.overlays.pop();
 				  if (overlay.line && overlay.line.animation){
@@ -884,7 +884,7 @@
 			  const screen = this.model.screens[to];
 			  if (screen){
 			  
-				  this.sendMouse();
+				  this.flushMouse(true);
 				  if (line.animation) {
 					  this.logger.log(2,"renderTransition","animate > " + line.animation);
   
@@ -969,7 +969,7 @@
 			  const to = line.to;
 			  const overlay = this.model.screens[to];
 			  if (overlay){
-				  this.sendMouse();
+				  this.flushMouse(true);
   
 				  if (line.animation){
 					  this.logger.log(2,"renderOverlay","animate > " + line.animation);

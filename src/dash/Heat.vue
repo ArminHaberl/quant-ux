@@ -85,7 +85,14 @@ export default {
             var e = temp[i];
             var tDif = 0;
 
-            if (lastT > 0) {
+            /**
+             * A repeated timestamp means the same sample was stored twice.
+             * Sessions recorded before the recorder stopped double sending
+             * contain many of those, and Math.log(0) is -Infinity, which
+             * would then be added into the cell. Skip the weight instead, so
+             * a duplicate contributes nothing rather than poisoning it.
+             */
+            if (lastT > 0 && e.t > lastT) {
               tDif = Math.log(e.t - lastT);
             }
 
