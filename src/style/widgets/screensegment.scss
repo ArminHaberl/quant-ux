@@ -36,6 +36,17 @@
     overflow: auto;
 }
 
+/**
+ * The player does not run wireEvents, so a segment never gets the simplebar
+ * hack there and would show a native scrollbar the participant never saw.
+ * Hide it and translate the inner container instead, the way Preview.setScroll
+ * translates the screen div. MatcPreview is only ever set on Preview and
+ * HeatPreview, so this cannot affect the live test.
+ */
+.MatcPreview .MatcWidgetTypeScreenSegement{
+    overflow: hidden;
+}
+
 
 .MatcWidgetTypeScreenSegementHint{
     position: absolute;
