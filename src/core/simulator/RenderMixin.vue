@@ -432,11 +432,19 @@
 			  * For container widgets we wire all the children and add
 			  * them to the model.
 			  */
-			  this.wireContainer(widget)
+			  this.wireContainer(widget, screen, screenId)
 			  
 		  },
   
-		  wireContainer (widget, screenId) {
+		  /**
+		   * screen and screenId MUST be passed in. They used to be missing here,
+		   * because this was called with only the widget, so inside it `screen`
+		   * resolved to the browser global window.screen and screenId was
+		   * undefined. Children were then wired with window.screen, whose id is
+		   * undefined, so every event logged by a ScreenSegment child landed
+		   * without a screen, which is why container children never replayed.
+		   */
+		  wireContainer (widget, screen, screenId) {
 			  if (widget.isContainer){
 				  this.logger.log(2,'wireContainer', 'enter', widget)
 				  let cntrWidget = this.renderFactory.getUIWidget(widget);
@@ -468,7 +476,6 @@
 					   */
 					  if (cntrWidget.getDataBindingChildren) {
 						  const dataBindingChildren = cntrWidget.getDataBindingChildren()
-						  const screen = this.model.screens[screenId]
 						  if (dataBindingChildren && screen) {
 							  dataBindingChildren.forEach(child => {
 								  const uiWidget = this.renderFactory.getUIWidget(child.widget);
@@ -544,7 +551,7 @@
 					  this.tempOwn(uiWidget.on("stateChange", lang.hitch(this, "onWidgetEvent", screenId, widget.id, uiWidget, line)));
 				  } else {
 					  this.tempOwn(uiWidget.on("click", lang.hitch(this, "onWidgetClick", screenId, widget.id)));
-					  this.tempOwn(uiWidget.on("stateChange", lang.hitch(this, "onWidgetEvent", screen.id, widget.id, uiWidget, null)));
+					  this.tempOwn(uiWidget.on("stateChange", lang.hitch(this, "onWidgetEvent", screenId, widget.id, uiWidget, null)));
 				  }
   
 				  /**

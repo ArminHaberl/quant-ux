@@ -562,9 +562,29 @@ export default {
 			};
 			var screenScoll = {};
 
+			/**
+			 * Events logged by a ScreenSegment child were recorded without a
+			 * screen, because the container wired its children with the browser
+			 * global instead of the real one, so `screen` was window.screen.id,
+			 * which is undefined. The recorder is fixed now, but every existing
+			 * recording still lacks the field, and without it those events are
+			 * dropped from the per event state map and never replay.
+			 *
+			 * Recover it from the last event that did carry a screen, which is
+			 * what the recorder would have written. this.events is our own
+			 * lang.clone of the session, so writing back to it is safe.
+			 */
+			var lastKnownScreen = null;
+			var backfilled = 0;
 
 			for(let i=0; i <this.events.length;i++){
 				let event = this.events[i];
+				if (event.screen) {
+					lastKnownScreen = event.screen;
+				} else if (lastKnownScreen) {
+					event.screen = lastKnownScreen;
+					backfilled++;
+				}
 				let screenID = event.screen;
 				// let eventID = event.id
 
@@ -710,6 +730,9 @@ export default {
 			this._overLayStates = overlayStatesByEvent;
 			this._scrollStates = screenScoll;
 
+			if (backfilled) {
+				console.log('backfilled screen onto ' + backfilled + ' event(s) that had none')
+			}
 
 			this.logger.log(2, "initWidgetStatesAndScroll", "exit");
 		},
