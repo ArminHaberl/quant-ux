@@ -51,32 +51,69 @@ export default {
         ScrollUtil.addScrollIfNeeded(this.domNode, false)
         /**
          * scroll does not bubble, so the simulator's own ScrollMixin never sees
-         * a scroll inside the segment. Emit it as a widget composite state, the
-         * way MobileDropDown records its popup scroll, which the player already
-         * knows how to replay.
+         * a scroll inside the segment, and neither would a bubble phase
+         * listener here. Capture does propagate, so this catches the scroll of
+         * whatever descendant actually scrolls.
+         *
+         * That matters because on Windows addScrollIfNeeded tags the segment
+         * with data-simplebar and simplebar re-parents the content into a
+         * .simplebar-content-wrapper, which becomes the scroll container. The
+         * segment itself then has nothing left to overflow, so its scrollTop
+         * stays 0. simplebar does that from a MutationObserver, so the wrapper
+         * does not exist yet at this point either, which is why we listen on
+         * the segment and resolve the real scroller from the event target.
+         *
+         * passive because we never preventDefault, so there is no reason to
+         * sit in the scroll's critical path.
          */
-        this.own(on(this.domNode, "scroll", lang.hitch(this, "onSegmentScroll")))
+        this.own(on(this.domNode, "scroll", lang.hitch(this, "onSegmentScroll"), { capture: true, passive: true }))
       }
     },
 
     /**
-     * How far the segment is scrolled, 0..1. A ratio rather than pixels,
+     * The element that actually scrolls. Either the segment itself, when
+     * nothing re-parented its content, or a scrollable descendant of it such as
+     * simplebar's content wrapper. Anything else is ignored so an unrelated
+     * inner scroller cannot be mistaken for the segment.
+     */
+    getSegmentScrollNode(target) {
+      if (!this.domNode || !target) {
+        return null
+      }
+      if (target === this.domNode) {
+        return this.domNode
+      }
+      if (!this.domNode.contains(target)) {
+        return null
+      }
+      if (target.scrollHeight - target.clientHeight <= 0) {
+        return null
+      }
+      return target
+    },
+
+    /**
+     * How far the given node is scrolled, 0..1. A ratio rather than pixels,
      * because the player may render the same model at another scale and this
      * stays correct there, the same way Preview.setScroll normalises by the
      * screen height.
      */
-    getSegmentScroll() {
-      if (!this.domNode) {
+    getSegmentScroll(node) {
+      if (!node) {
         return 0
       }
-      const max = this.domNode.scrollHeight - this.domNode.clientHeight
+      const max = node.scrollHeight - node.clientHeight
       if (max <= 0) {
         return 0
       }
-      return Math.min(1, Math.max(0, this.domNode.scrollTop / max))
+      return Math.min(1, Math.max(0, node.scrollTop / max))
     },
 
-    onSegmentScroll() {
+    onSegmentScroll(e) {
+      const node = this.getSegmentScrollNode(e && e.target)
+      if (!node) {
+        return
+      }
       const now = new Date().getTime()
       /**
        * Throttle samples, then debounce the emit, so one gesture becomes one
@@ -86,10 +123,11 @@ export default {
         return
       }
       this._segmentLastSample = now
+      this._segmentScrollNode = node
       if (this._compositeState) {
-        this.addCompositeSubState(this.getSegmentScroll())
+        this.addCompositeSubState(this.getSegmentScroll(node))
       } else {
-        this.initCompositeState(this.getSegmentScroll())
+        this.initCompositeState(this.getSegmentScroll(node))
       }
       clearTimeout(this._segmentScrollTimeout)
       this._segmentScrollTimeout = setTimeout(lang.hitch(this, "flushSegmentScroll"), 250)
@@ -101,7 +139,7 @@ export default {
        * a fresh gesture.
        */
       if (this._compositeState) {
-        this.emitCompositeState("scroll", this.getSegmentScroll(), null)
+        this.emitCompositeState("scroll", this.getSegmentScroll(this._segmentScrollNode), null)
       }
     },
 
@@ -144,8 +182,18 @@ export default {
       if (!this.cntr || !this.domNode) {
         return
       }
-      const max = this.domNode.scrollHeight - this.domNode.clientHeight
-      this.cntr.style.top = -value * max + "px"
+      /**
+       * Take the range from the content height rather than domNode.scrollHeight.
+       * The latter is unusable here: whenever simplebar has re-parented the
+       * content it reports 570, the same as clientHeight, so the segment looks
+       * like it has nothing to scroll. The content height is correct in both
+       * cases and does not care whether the inner container resolves as
+       * position absolute, which is what the player sees, or static, which is
+       * what simplebar forces.
+       */
+      const contentH = this.cntr.offsetHeight || this.domNode.scrollHeight
+      const range = Math.max(0, contentH - this.domNode.clientHeight)
+      this.cntr.style.top = -value * range + "px"
     },
 
     beforeDestroy() {
@@ -159,6 +207,7 @@ export default {
       delete this._segmentScrollTimeout
       delete this._compositeState
       delete this._segmentLastSample
+      delete this._segmentScrollNode
     },
 
     setSymbol(s) {
