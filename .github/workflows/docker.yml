@@ -6,7 +6,21 @@ on:
     branches: [master]
 
 jobs:
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v3
+
+      # Same command used locally, so there is one way to run the suite and no
+      # chance of the two drifting apart.
+      - name: Run unit tests
+        run: make test
+
   build:
+    name: Build and push image
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repo
