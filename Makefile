@@ -2,6 +2,7 @@
 
 
 QUX_PUBLIC_PATH ?= /quant-ux/
+QUX_TEST_IMAGE ?= quant-ux-test
 
 
 
@@ -17,3 +18,16 @@ up:
 
 down:
 	 docker compose --file docker/docker-compose.yml down
+
+
+# Run the unit tests. src/ and tests/ are bind mounted, so the image builds once
+# and then stays cached while you edit source. Extra args pass through, e.g.
+# make test ARGS="--runInBand -t WidgetTreeUtil"
+test-deps:
+	docker build --target test-deps -t $(QUX_TEST_IMAGE) .
+
+test: test-deps
+	docker run --rm \
+		-v $(CURDIR)/src:/home/node/src \
+		-v $(CURDIR)/tests:/home/node/tests \
+		$(QUX_TEST_IMAGE) npm run test:unit $(ARGS)

@@ -54,3 +54,20 @@ WORKDIR /home/node
 COPY --chown=node:node --from=builder ["/home/node", "./"]
 
 CMD [ "npm", "run", "serve", "--", "--port", "8082" ]
+
+
+
+# Dev dependencies for the unit tests, and nothing else. src/ and tests/ are bind
+# mounted when the container runs (see "make test"), so this image only rebuilds
+# when package.json, the lock file or a config changes instead of on every source
+# edit. The configs are copied after the install so that editing one does not
+# force a reinstall.
+# If a test ever needs another file from the repo root, add it to the COPY below.
+FROM node:${NODE_VERSION}-alpine${ALPINE_VERSION} AS test-deps
+
+USER node
+WORKDIR /home/node
+
+COPY --chown=node:node ["package.json", "package-lock.json", "./"]
+RUN npm clean-install --include=dev
+COPY --chown=node:node ["babel.config.js", "jest.config.js", "vue.config.js", ".browserslistrc", "./"]
