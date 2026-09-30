@@ -1883,6 +1883,14 @@ export default class RenderFactory extends Core {
 		this._editNodes = {};
 		this._uiWidgets = {};
 		this._widgetNodes = {};
+		/**
+		 * _widgetModels has to be reset here too. It used to be the one map
+		 * that survived, which meant it grew for the lifetime of the page and
+		 * getAnimationWrapper could build a wrapper from a model belonging to a
+		 * screen that is long gone. It bought nothing, because the fallback also
+		 * needs _widgetNodes, which was always cleared alongside it.
+		 */
+		this._widgetModels = {};
 		this._containerWidgets = {}
 	}
 
