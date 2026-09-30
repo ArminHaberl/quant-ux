@@ -5,7 +5,14 @@ import MockModelService from './mocks/MockModelService'
 import MockCommandService from './mocks/MockCommandService'
 import lang from "../../src/dojo/_base/lang";
 
-requestAnimationFrame = function () {}
+/**
+ * jsdom does not provide requestAnimationFrame, and the widget rendering code
+ * calls it during controller setup. Stub it as a no-op so the tests stay
+ * deterministic instead of depending on rAF scheduling.
+ */
+if (typeof global.requestAnimationFrame === "undefined") {
+    global.requestAnimationFrame = function () {}
+}
 
 export function createController (model, data={}) {
     model = lang.clone(model)

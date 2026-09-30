@@ -1,7 +1,7 @@
 import app from './data/simSimpleForm.json'
 import * as Flat2Tree from '../../src/core/responsive/Flat2Tree'
 import Config from '../../src/core/responsive/Config'
-import AISimService from '../../src/services/AiSimService';
+import AISimService from '../../src/services/AISimService';
 
 
 test('Test AISimService.convertAppToText() > simpleApp', async () => {
