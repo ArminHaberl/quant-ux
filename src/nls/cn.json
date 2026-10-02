@@ -87,7 +87,15 @@
             "error-figma-key": "请提供 access key",
             "error-figma-url": "复制Figma原型Url",
             "error-figma-load": "加载Figma文件发生了一些错误",
-            "error-public": "导入功能无法在使用模式下使用"
+            "error-public": "导入功能无法在使用模式下使用",
+            "error-no-file": "未选择文件",
+            "error-zip-no-file": "文件类型错误",
+            "error-no-model": "没有打开的设计",
+            "error-failed": "导入失败",
+            "zip-progress-read": "正在读取zip文件...",
+            "zip-progress-upload": "正在上传图片...",
+            "zip-progress-done": "正在导入...",
+            "zip-missing-images": "以下图片不在zip文件中，已跳过：{{images}}"
         },
         "login": {
             "password": {

@@ -44,8 +44,14 @@ export default {
         this.logger.log(-1, 'downloadZip', 'enter')
 
         try {
-          let content = await ZipSevice.writeZipToBlob(this.model, this.jwtToken)
-          console.debug(content)
+          let {content, missingImages} = await ZipSevice.writeZipToBlob(this.model, this.jwtToken)
+          if (missingImages && missingImages.length > 0) {
+            /**
+             * The archive is still valid, but those images are gone from the
+             * design in it, so the user should know before they import it.
+             */
+            this.logger.error('downloadZip', 'Excluded images that could not be loaded: ' + missingImages.join(', '))
+          }
           saveAs(content, this.model.name + '.zip')
         } catch (err) {
           this.logger.error('downloadZip', 'error', err)

@@ -114,3 +114,37 @@ test('Test ImportUtil.replaceValues', async () => {
   expect(result[0]).toBe('a')
   expect(result[3]).toBe('d1')
 })
+
+
+/**
+ * A design.json comes from a file, so it can be missing collections we iterate
+ * over unguarded. Throwing halfway through left the controller between
+ * startModelChange() and commitModelChange(), which is a broken state.
+ */
+test('Test ImportUtil.mergeModel with a design that is missing collections', async () => {
+
+  let model = JSON.parse(JSON.stringify(app))
+  let screensBefore = Object.keys(model.screens).length
+
+  let partial = {
+    screens: {
+      s1: {id: 's1', x: 0, y: 0, children: []}
+    }
+  }
+
+  let changes = ImportUtil.mergeModel(model, partial, {x: 0, y: 0})
+
+  expect(changes.filter(c => c.type === 'screen').length).toBe(1)
+  expect(Object.keys(model.screens).length).toBe(screensBefore + 1)
+  expect(Object.values(model.screens).find(s => s.importSourceId === 's1')).toBeDefined()
+})
+
+
+test('Test ImportUtil.mergeModel with an empty design', async () => {
+
+  let model = JSON.parse(JSON.stringify(app))
+
+  let changes = ImportUtil.mergeModel(model, {}, {x: 0, y: 0})
+
+  expect(changes).toEqual([])
+})

@@ -31,7 +31,7 @@
                     <span v-else class="MatchImportDialogPreview MatchImportDialogZip MatcToolbarDropDownButtonItem">
                         <span class="mdi mdi-file-code-outline"/>
                     </span>
-                    <input type="file" @change="onZipChange" >
+                    <input type="file" accept=".zip,application/zip" ref="zipInput" @change="onZipChange" >
                 </div>
             </div>
 
@@ -110,9 +110,13 @@
             {{errorMSG}}
         </div>
 
+        <div class="MatcWarning" v-if="warningMSG">
+            {{warningMSG}}
+        </div>
+
         <div class=" MatcButtonBar MatcMarginTop">
             <a class=" MatcButton MatcButtonPrimary" v-if="hasContinue" @click.stop="onContinueFigma">{{ getNLS('btn.continue')}}</a>
-            <a class=" MatcButton MatcButtonPrimary" v-if="!isPublic && !hasContinue" @click.stop="onSave">{{ getNLS('btn.import')}}</a>
+            <a class=" MatcButton MatcButtonPrimary" v-if="!isPublic && !hasContinue" :class="{'MatcImportBusy': isImporting}" @click.stop="onSave">{{ getNLS('btn.import')}}</a>
             <a class=" MatcLinkButton" @click.stop="onCancel">{{ getNLS('btn.cancel')}}</a>
         </div>
 
@@ -146,6 +150,8 @@ export default {
             hasZip: false,
             zoom: 1,
             errorMSG: '',
+            warningMSG: '',
+            isImporting: false,
             progressMSG: '',
             progessPercent: 0,
             figmaAcccessKey: '',
@@ -209,7 +215,11 @@ export default {
             this.errorMSG = ""
             if (this.tab === 'images') {
                 this.tab = 'progress'
-                await this.uploadImagesAndCreateScreens()
+                try {
+                    await this.uploadImagesAndCreateScreens()
+                } catch (err) {
+                    this.onImportError(err, 'uploadImagesAndCreateScreens')
+                }
             }
             if (this.tab === 'figma' && this.isValidFigmaConfig()) {
                 this.tab = 'progress'
@@ -224,6 +234,18 @@ export default {
             if (this.tab === 'openai') {
                 await this.importOpenAI()
             }
+        },
+
+        /**
+         * Turns a failed import into something the user can see and act on,
+         * instead of an unhandled rejection that leaves the dialog frozen on
+         * the progress tab.
+         */
+        onImportError (err, method) {
+            this.logger.error(method, err)
+            this.logger.sendError(err)
+            this.errorMSG = err && err.message ? err.message : this.getNLS('dialog.import.error-failed')
+            this.tab = 'progress'
         },
 
         async importOpenAI () {
@@ -609,12 +631,11 @@ export default {
          * Zip stuff
          */
         onZipChange (e) {
-            let files = e.target.files
-            this.showZip(files)
+            this.showZip(e.target.files)
         },
 
         isZipFile (file) {
-            return file.name.endsWith('.zip')
+            return file && file.name && file.name.toLowerCase().endsWith('.zip')
         },
 
         onZipFileDropped (files) {
@@ -623,41 +644,101 @@ export default {
         },
 
         showZip (files) {
-            this.logger.log(-1, 'showZip', 'error', files)
-            this.hasZip = true
-             this.hasDrop = false
-            this.zipFile = files[0]
+            this.logger.log(-1, 'showZip', 'files', files && files.length)
             this.errorMSG = ""
+            this.warningMSG = ""
+            this.hasDrop = false
 
-            if (this.zipFile && !this.isZipFile(this.zipFile)) {
-                this.errorMSG = this.getNLS('dialog.import.error-zip-no-file')
-                this.hasZip = false
+            /**
+             * The file dialog can also be dismissed without picking anything,
+             * in which case the FileList is empty. That must not leave us in
+             * a state where a zip looks selected but is not.
+             */
+            if (!files || files.length === 0) {
+                this.clearZip()
                 return
+            }
+
+            let file = files[0]
+            this.zipFile = file
+            this.hasZip = true
+
+            if (!this.isZipFile(file)) {
+                this.errorMSG = this.getNLS('dialog.import.error-zip-no-file')
+                this.clearZip()
+                this.resetZipInput()
+            }
+        },
+
+        clearZip () {
+            this.hasZip = false
+            this.zipFile = null
+        },
+
+        /**
+         * Clearing the native input makes selecting the very same file again
+         * fire a change event.
+         */
+        resetZipInput () {
+            if (this.$refs.zipInput) {
+                this.$refs.zipInput.value = ""
             }
         },
 
         async importZip () {
             this.logger.log(-1, 'importZip', 'enter')
-            if (!this.hasZip) {
+            this.errorMSG = ""
+            this.warningMSG = ""
+
+            if (!this.hasZip || !this.zipFile) {
                 this.errorMSG = this.getNLS('dialog.import.error-no-file')
                 return
             }
-            if (this.zipFile && !this.isZipFile(this.zipFile)) {
+            if (!this.isZipFile(this.zipFile)) {
                 this.errorMSG = this.getNLS('dialog.import.error-zip-no-file')
+                this.clearZip()
+                this.resetZipInput()
+                return
+            }
+            if (!this.model) {
+                this.errorMSG = this.getNLS('dialog.import.error-no-model')
                 return
             }
 
             this.tab = 'progress'
+            this.isImporting = true
 
-            // upload images from zip and update model
-            this.setProgress(0.1)
-            let zipModel = await ZipSevice.uploadImages(this.zipFile, this.model.id, (done, total) => {
-                 this.setProgress(((done / total) * 80) + 20)
-            })
-            // import app
-            await this.controller.importApp(zipModel, this.getCanvasCenter())
-            // close dialog
-            this.$emit('save')
+            try {
+                // upload images from zip and update model
+                this.setProgress(0.1, 'dialog.import.zip-progress-read')
+                let zip = await ZipSevice.uploadImages(this.zipFile, this.model.id, (done, total) => {
+                    this.setProgress(((done / total) * 80) + 20, 'dialog.import.zip-progress-upload')
+                })
+
+                if (zip.missingImages.length > 0) {
+                    this.warningMSG = this.getNlSWithReplacement('dialog.import.zip-missing-images', {
+                        images: zip.missingImages.join(', ')
+                    })
+                }
+
+                // import app
+                this.setProgress(100, 'dialog.import.zip-progress-done')
+                await this.controller.importApp(zip.model, this.getCanvasCenter())
+
+                // close dialog
+                this.$emit('save')
+            } catch (err) {
+                /**
+                 * Without this the rejection is unhandled: the dialog stays on
+                 * the progress tab with an empty message and looks frozen.
+                 */
+                this.logger.error('importZip', err)
+                this.logger.sendError(err)
+                this.errorMSG = err && err.message ? err.message : this.getNLS('dialog.import.error-failed')
+                this.tab = 'zip'
+            } finally {
+                this.isImporting = false
+            }
         }
 
 

@@ -31,3 +31,11 @@ test: test-deps
 		-v $(CURDIR)/src:/home/node/src \
 		-v $(CURDIR)/tests:/home/node/tests \
 		$(QUX_TEST_IMAGE) npm run test:unit $(ARGS)
+
+# Lint the same two trees inside the test image. --no-fix, because src/ and
+# tests/ are bind mounted and we do not want the container rewriting them.
+lint: test-deps
+	docker run --rm \
+		-v $(CURDIR)/src:/home/node/src \
+		-v $(CURDIR)/tests:/home/node/tests \
+		$(QUX_TEST_IMAGE) npm run lint -- --no-fix $(ARGS)

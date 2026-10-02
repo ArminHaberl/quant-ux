@@ -99,6 +99,12 @@
             "error-swagger-no-url": "Por favor introduza uma URL com um arquivo swagger.",
             "error-no-file": "Nenhum arquivo selecionado",
             "error-zip-no-file": "Tipo de arquivo errado",
+            "error-no-model": "Nenhum design aberto",
+            "error-failed": "A importação falhou",
+            "zip-progress-read": "A ler o ficheiro zip...",
+            "zip-progress-upload": "A enviar imagens...",
+            "zip-progress-done": "A importar...",
+            "zip-missing-images": "Estas imagens não estavam no zip e foram ignoradas: {{images}}",
             "open-api-url": "URL"
         },
         "export": {

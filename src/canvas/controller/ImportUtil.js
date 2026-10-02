@@ -1,5 +1,19 @@
+const IMPORT_COLLECTIONS = ['screens', 'widgets', 'lines', 'groups', 'templates']
+
 export function mergeModel (model, importModel, pos) {
   let changes = []
+
+  /**
+   * An imported design comes from a file and is not under our control, so it
+   * can be missing collections we iterate over unguarded below. Fill them in
+   * once here instead of guarding every single access.
+   */
+  IMPORT_COLLECTIONS.forEach(collection => {
+    if (!importModel[collection]) {
+      importModel[collection] = {}
+    }
+  })
+
   /**
    * First correct positions
    */

@@ -18,6 +18,13 @@ jobs:
       - name: Run unit tests
         run: make test
 
+      # Non blocking while the existing backlog is cleared. There is no lint
+      # step before this one, so the tree carries errors nobody is watching.
+      # Flip this to blocking once `make lint` comes back clean.
+      - name: Lint
+        run: make lint
+        continue-on-error: true
+
   build:
     name: Build and push image
     needs: test

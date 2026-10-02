@@ -123,6 +123,18 @@
   }
 
 
+  /**
+   * Shown instead of the error line for recoverable problems, e.g. images the
+   * archive did not contain.
+   */
+  .MatcWarning {
+    height: 20px;
+  }
+
+  .MatcImportBusy {
+    opacity: 0.5;
+    pointer-events: none;
+  }
 }
 
 

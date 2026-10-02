@@ -70,4 +70,4 @@ WORKDIR /home/node
 
 COPY --chown=node:node ["package.json", "package-lock.json", "./"]
 RUN npm clean-install --include=dev
-COPY --chown=node:node ["babel.config.js", "jest.config.js", "vue.config.js", ".browserslistrc", "./"]
+COPY --chown=node:node ["babel.config.js", "jest.config.js", "vue.config.js", ".eslintrc.js", ".browserslistrc", "./"]
