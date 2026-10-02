@@ -452,22 +452,29 @@ export default class AIService extends AbstractService {
         }
     }
 
+    /**
+     * Pull the document out of a model reply.
+     *
+     * This searched for the literal 'html>', which always matches two
+     * characters inside '</html>' as well, so for a reply that opened with
+     * <html lang="en"> the two indexes crossed and String.substring
+     * silently swapped them, returning just '</html>'. The caller got
+     * '<html></html></html>' and reported success with an empty preview.
+     * Matching the tag itself is unambiguous.
+     */
     extractHTML (content) {
-          
+
         if (!content) {
             return {
                 error: 'error-no-content'
             }
         }
-        const start = content.indexOf('html>')
-        const end = content.indexOf('</html>')
-        if (start > -1 && end > -1) {
-            let innerHTML = content.substring(start + 5, end)
-            innerHTML = innerHTML.replace('<html>', '')
+        const match = content.match(/<html[^>]*>([\s\S]*)<\/html>/i)
+        if (match) {
             return {
-                html: `<html>${innerHTML}</html>`
+                html: `<html>${match[1]}</html>`
             }
-        } 
+        }
         return {
             error: 'design-gpt.error-no-html'
         }

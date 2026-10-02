@@ -159,11 +159,23 @@ class UserService extends AbstractService{
                     clearTimeout(this.ttlTimeout)
                 }
                 let waitTime = u.exp - new Date().getTime() - (5 * 60 * 1000)
-                this.ttlTimeout = setTimeout(() => {
-                    location.href = `#/logout.html`
-                }, waitTime)
+                /**
+                 * Only schedule when the token survives the 5 minute margin.
+                 * A shorter waitTime is negative, setTimeout treats a
+                 * negative delay as 0, so a token with under five minutes
+                 * left threw the user to the logout page immediately while
+                 * the token was still valid.
+                 */
+                if (waitTime > 0) {
+                    this.ttlTimeout = setTimeout(() => {
+                        location.href = `#/logout.html`
+                    }, waitTime)
+                    this.logger.log(-1, 'setTTL', 'Auto loggout  in ' + (waitTime / 1000) + ' sec')
+                } else {
+                    this.ttlTimeout = null
+                    this.logger.log(-1, 'setTTL', 'Token expires within the 5 min margin, not scheduling auto logout')
+                }
                 this.logger.log(-1, 'setTTL', 'User valid until', new Date(u.exp))
-                this.logger.log(-1, 'setTTL', 'Auto loggout  in ' + (waitTime / 1000) + ' sec')
             } else {
                 this.logger.log(-1, 'setTTL', 'exit > NO token')
             }

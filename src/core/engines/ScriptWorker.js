@@ -40,10 +40,9 @@ async function runCode (js, qux,viewModel, console, sourceEvent) {
     if (js.indexOf('await ') >= 0) {
         Logger.warn('ScriptWoker.runCode() > enter > ASYNC ', js)
         const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
-        const aysncJS = `return new Promise(async (resolve) => {
+        const aysncJS = `return (async () => {
             ${js}
-            resolve()
-        });`
+        })();`
         console.log('ScriptWoker.runCode() > run aysnc...')
         const asycnCode = AsyncFunction('qux', 'data', 'console', 'event', aysncJS)
         return await asycnCode(qux,viewModel, console, sourceEvent);

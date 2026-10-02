@@ -112,24 +112,30 @@ export default {
 
         const event = this.getScriptSourceEvent(orginalLine)
 
-        return new Promise(async(resolve) => {
-            const engine = new ScriptEngine()
-            const result = await engine.run(script, this.model, this.dataBindingValues, event).then()
-     
-            if (result.status === 'ok') {     
+        /**
+         * No hand rolled new Promise(async ...) wrapper: if the engine
+         * rejected, or result was null so result.status threw, the executor
+         * threw where nothing could observe it, resolve was never called and
+         * this promise stayed pending forever. Awaiting the engine directly
+         * turns both into a rejection the caller already handles.
+         */
+        const engine = new ScriptEngine()
+        const result = await engine.run(script, this.model, this.dataBindingValues, event).then()
+
+        if (result && result.status === 'ok') {
+            return new Promise((resolve) => {
                 requestAnimationFrame( () => {
                     this.vibrate(result)
                     this.renderAppChanges(result)
-                    this.renderScriptDataBinding(result)  
+                    this.renderScriptDataBinding(result)
                     this.logScriptEffect(result, widget, dataBefore)
                     this.renderScriptTo(result, widget, orginalLine)
                     this.logger.log(1,"runScript","exit");
                     resolve(result)
                 })
-            } else {
-                resolve(result)
-            }
-        }) 
+            })
+        }
+        return result
     },
 
     getScriptDataChanges (before, after) {

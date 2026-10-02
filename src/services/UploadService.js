@@ -33,14 +33,50 @@ class UploadService extends AbstractService {
         this.logger.error("_sendSingleFile", "No token");
         this.logger.sendError(new Error('Could not upload because no token'))
       }
-      xhr.onload = function () {
+
+      /**
+       * An XHR does not time out on its own, so without this a request that
+       * never gets a response leaves the caller awaiting forever.
+       */
+      xhr.timeout = 300000
+
+      const fail = (reason, status) => {
+        let detail = ''
+        if (typeof xhr.response === 'string' && xhr.response.length > 0) {
+          detail = xhr.response.length > 500 ? xhr.response.substring(0, 500) : xhr.response
+        }
+        let message = 'Could not upload to ' + url
+        if (status) {
+          message += ' (HTTP ' + status + ')'
+        }
+        if (reason) {
+          message += ': ' + reason
+        }
+        if (detail) {
+          message += ' > ' + detail
+        }
+        let error = new Error(message)
+        error.status = status
+        this.logger.error('upload', message)
+        this.logger.sendError(error)
+        reject(error)
+      }
+
+      /**
+       * Arrow function on purpose: as a plain function handler `this` is the
+       * XHR and not this service, so `this.logger` threw a TypeError before
+       * reject() was reached and the caller awaited forever.
+       */
+      xhr.onload = () => {
           if (xhr.status === 200) {
-            resolve(this.response);
+            resolve(xhr.response);
           } else {
-            this.logger.sendError(new Error('Could not upload'))
-            reject(this.response);
+            fail(null, xhr.status)
           }
       };
+      xhr.onerror = () => fail('network error')
+      xhr.ontimeout = () => fail('timeout')
+      xhr.onabort = () => fail('aborted')
       xhr.send(formData);
     })
   }

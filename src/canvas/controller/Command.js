@@ -59,12 +59,25 @@ export default class Command extends BaseController{
         if (change) {
             const modelChanges = change.modelChanges
 			if (modelChanges) {
-				for (let i = 0; i < modelChanges.length; i++) {
-					const c = modelChanges[i]
-					this.applyUndoChange(c, this.model)
+                /**
+                 * pos is moved before the changes are applied, so a throw
+                 * mid-loop would leave the index advanced, the model half
+                 * reverted, and neither the store nor the re-render reached.
+                 * Put the index back so the history stays consistent.
+                 */
+				try {
+					for (let i = 0; i < modelChanges.length; i++) {
+						const c = modelChanges[i]
+						this.applyUndoChange(c, this.model)
+					}
+				} catch (e) {
+					this.commandChangeStack.pos++
+					this.logger.error('undoChangeStack', 'could not apply change', e)
+					this.showError("Could not undo, see console for details")
+					return false
 				}
 			}
-	
+
         } else {
             this.logger.warn("undoChangeStack", "no change ??");
         }
@@ -93,9 +106,17 @@ export default class Command extends BaseController{
         if (change) {
             const modelChanges = change.modelChanges
 			if (modelChanges) {
-				for (let i = 0; i < modelChanges.length; i++) {
-					const c = modelChanges[i]
-					this.applyRedoChange(c, this.model)
+                /** Same rollback as undoChangeStack: pos moves first. */
+				try {
+					for (let i = 0; i < modelChanges.length; i++) {
+						const c = modelChanges[i]
+						this.applyRedoChange(c, this.model)
+					}
+				} catch (e) {
+					this.commandChangeStack.pos--
+					this.logger.error('redoChangeStack', 'could not apply change', e)
+					this.showError("Could not redo, see console for details")
+					return false
 				}
 			}
         } else {
@@ -124,7 +145,12 @@ export default class Command extends BaseController{
     }
 
 	applyRedoChange(c, model) {
-        if (c.name !== 'lastUUID' || c.name !== 'lastUpdate') {
+        /**
+         * && not ||: `x !== 'a' || x !== 'b'` is always true, so this guard
+         * never filtered anything. applyUndoChange correctly skips
+         * lastUUID only, so use && to exclude both.
+         */
+        if (c.name !== 'lastUUID' && c.name !== 'lastUpdate') {
 			//console.debug('applyRedoChange', c)
             let parent = c.parent ? model[c.parent] : model
             if (c.type == 'add') {
@@ -161,25 +187,38 @@ export default class Command extends BaseController{
         if (c.name !== 'lastUUID') {
 
             let parent = c.parent ? model[c.parent] : model
-			
+            if (!parent) {
+                this.logger.error('applyUndoChange', 'no parent for change', c)
+                return
+            }
+
             if (c.type == 'add') {
                 if (c.name) {
-                    delete parent[c.name]	
+                    delete parent[c.name]
                 } else {
                     console.error('undoChangeStack() > add > no name', c)
                 }
             }
-        
-            if (c.type == 'update') {              
+
+            if (c.type == 'update') {
                 const value = c.oldValue
-				if (value.props)
-				if (this.isObject(value)) {
+                /**
+                 * A bare `if (value.props)` used to sit here. It guarded
+                 * nothing and dereferenced value first, but oldValue is
+                 * routinely undefined: CollabUtil.getChange emits an
+                 * "update" whenever typeof old !== typeof new, which is the
+                 * case whenever a key did not exist before. The resulting
+                 * TypeError escaped undo(), which had already decremented
+                 * the stack position, so the model stayed half reverted with
+                 * no re-render and no save.
+                 */
+                if (this.isObject(value)) {
 					value.modified = new Date().getTime()
 				}
                 if (c.name) {
                     parent[c.name] = value
                 }
-				
+
             }
 
             if (c.type == 'delete') {              

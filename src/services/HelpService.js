@@ -2,7 +2,7 @@ class HelpService  {
 
 
     getAll () {
-        return new Promise( (resolve) => {
+        return new Promise( (resolve, reject) => {
             if (!this.texts) {
                 Promise.all([
                     import(/* webpackChunkName: "help" */ 'help/en/default.js'),
@@ -49,6 +49,14 @@ class HelpService  {
                         }
                     })
                     resolve(this.texts)
+                }).catch(err => {
+                    /**
+                     * Without this a single failing chunk rejected the
+                     * Promise.all and nothing observed it, so getAll()
+                     * neither resolved nor rejected and the help dialog
+                     * stayed on "loading" forever.
+                     */
+                    reject(err)
                 })
             } else {
                 resolve(this.texts)

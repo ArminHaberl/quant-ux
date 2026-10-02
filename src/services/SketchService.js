@@ -14,25 +14,21 @@ export default class SketchService {
 
     async run (bytes) {
         this.logger.log(4, 'run', 'enter')
-        return new Promise(async (resolve, reject) => {
-            try {
-                /**
-                 * Lazy load jszip
-                 */
-                let x = await import(/* webpackChunkName: "sketch" */ 'jszip')
-                let zip = new x.default()
-                zip.loadAsync(bytes).then(res => {
-                    this.logger.log(1, 'run', 'zip loaded', res)
-                    this.processZip(res, resolve, reject)
-                })
-            } catch (e) {
-                this.logger.error('run', 'error', e)
-                reject(e)
-            }
-        })
+        /**
+         * Not a new Promise(async (resolve, reject) => ...) wrapper. The
+         * catch below only covered the synchronous part, so a loadAsync
+         * rejection (dropped a non zip file) and anything thrown inside
+         * processZip were both unobserved and neither resolve nor reject was
+         * ever called: the caller's await hung with the dialog on "loading".
+         */
+        let x = await import(/* webpackChunkName: "sketch" */ 'jszip')
+        let zip = new x.default()
+        const res = await zip.loadAsync(bytes)
+        this.logger.log(1, 'run', 'zip loaded', res)
+        return this.processZip(res)
     }
 
-    async processZip (zip, resolve) {
+    async processZip (zip) {
         this.logger.log(4, 'processZip', 'enter')
         let result = {
             model: {
@@ -59,7 +55,7 @@ export default class SketchService {
          * Set screen size to min of all board
          */
        
-        this.parse(result, resolve)   
+        return this.parse(result)
     }
 
     async loadJSONs (result, zip) {
@@ -73,9 +69,20 @@ export default class SketchService {
         });
         let files = await Promise.all(promisses)
         files = files.map((file, i) => {
+            /**
+             * A truncated document.json used to throw here, which rejected
+             * loadJSONs into the unobserved chain and hung the import.
+             * Name the file so the error is actionable.
+             */
+            let json
+            try {
+                json = JSON.parse(file)
+            } catch (e) {
+                throw new Error('Could not parse ' + names[i] + ': ' + e.message)
+            }
             return {
                 name: names[i],
-                json: JSON.parse(file)
+                json: json
             }
         })
         result.files = files
@@ -100,7 +107,7 @@ export default class SketchService {
         result.previews = files
     }
 
-    parse (result, resolve) {
+    parse (result) {
         this.logger.log(4, 'parse', 'enter')
   
         result.files.forEach(file => {
@@ -109,7 +116,7 @@ export default class SketchService {
             }
         })
 
-        resolve(result)
+        return result
     }
 
     parsePage (result, file) {
@@ -154,11 +161,16 @@ export default class SketchService {
     }
 
     loopWidgets (result, screen, offset, parent) {
-        parent.layers.map(layer => {
+        (parent.layers || []).map(layer => {
             if (this['parse_' + layer._class]) {
                 this['parse_' + layer._class](result, screen, offset, layer)
                 if (layer.layers && layer.layers.length > 0) {
-                    this.loopWidgets()
+                    /**
+                     * Recursed with no arguments at all, so the nested call
+                     * threw on `parent.layers` and aborted the whole import
+                     * for any group nested inside an artboard.
+                     */
+                    this.loopWidgets(result, screen, offset, layer)
                 }
             } else {
                 this.logger.warn('loopLayers', 'unknown type', layer._class)

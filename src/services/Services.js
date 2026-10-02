@@ -53,6 +53,15 @@ class Services {
         PublicModelService.setErrorHandler(handler)
         UserService.setErrorHandler(handler)
         ImageService.setErrorHandler(handler)
+        /**
+         * These extend AbstractService and call this.onError() on a non 2xx,
+         * so without a handler their failures were dropped silently: a 401
+         * while saving the change stack or the notification state never
+         * reached the global handler.
+         */
+        CommandService.setErrorHandler(handler)
+        NotificationService.setErrorHandler(handler)
+        UploadService.setErrorHandler(handler)
     }
 
     getImageService () {
@@ -81,14 +90,20 @@ class Services {
 
     getAIService () {
         const aiService = new AIService()
-        aiService.setToken(UserService.getToken())
-        return aiService   
+        aiService.setToken(this.getUserService().getToken())
+        return aiService
     }
 
     getAISimService () {
         const aiSimService = new AISimService()
-        aiSimService.setToken(UserService.getToken())
-        return aiSimService   
+        /**
+         * Through this.getUserService(), not UserService directly: under
+         * keycloak auth the token lives on KeyCloakService, so reading it
+         * from UserService returned null and every AI request went out
+         * unauthenticated.
+         */
+        aiSimService.setToken(this.getUserService().getToken())
+        return aiSimService
     }
     
 

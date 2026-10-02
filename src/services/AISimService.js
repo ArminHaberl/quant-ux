@@ -157,11 +157,25 @@ export default class AISimService extends AbstractService {
         }
 
         const events = await this.runPrompt(data)
+        /**
+         * runPrompt returns {error: ...} on every failure path instead of
+         * throwing, so iterating it with for..of threw "events is not
+         * iterable". That rejection had no handler in the dialog and left it
+         * on the running tab forever.
+         */
+        if (!Array.isArray(events)) {
+            this.logger.error('runScreen', 'runPrompt did not return events', events)
+            return result
+        }
         result.push({
             screen: screenId,
             type: "ScreenLoaded"
         })
         const scrn = app.screens[screenId]
+        if (!scrn) {
+            this.logger.error('runScreen', 'no screen ' + screenId)
+            return result
+        }
         for (const event of events) {
             const line = this.getClickTarget(app, event.id)
             const widget = app.widgets[event.id]

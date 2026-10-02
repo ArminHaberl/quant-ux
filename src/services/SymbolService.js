@@ -71,7 +71,7 @@ class SymbolService extends AbstractService{
 
 
     getCore() {
-      return new Promise( (resolve) => {
+      return new Promise( (resolve, reject) => {
         if (!this.themes) {
           this.logger.log(3, 'getCore', 'exit > Load')
           Promise.all([
@@ -256,6 +256,14 @@ class SymbolService extends AbstractService{
             this.hookInWidgets(this.themes)
             this.logger.log(3, 'getCore', 'exit > loaded', this.themes.length)
             resolve(this.themes)
+          }).catch(err => {
+              /**
+               * Without this one failing chunk rejected the Promise.all and
+               * nothing observed it, so getCore() never settled and the
+               * splash stayed up for the whole session.
+               */
+              this.logger.error('getCore', 'error', err)
+              reject(err)
           })
         } else {
           this.logger.log(3, 'getCore', 'exit > Cache')

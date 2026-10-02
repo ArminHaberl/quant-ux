@@ -31,28 +31,43 @@ class KeyCloakService extends AbstractService{
         }
     }
 
-    init() {
-        if (this.isInited) {
-            return
+init() {
+        /**
+         * Guarded on initPromise, not isInited: isInited was only set on the
+         * authenticated branch, so an unauthenticated init() ran the whole
+         * body again and each run armed another refresh interval.
+         */
+        if (this.initPromise) {
+            return this.initPromise
         }
-        return new Promise((resolve) => {
+        this.initPromise = new Promise((resolve) => {
             this.logger.log(-1, 'init() > enter')
-         
-                      
+
             const keycloak = Keycloak(this.initOptions);
+            this.keycloak = keycloak
+
+            /**
+             * keycloak.init() returns a promise and onReady is deprecated, but
+             * neither the promise nor its rejection was observed. If init
+             * rejected (unreachable server, wrong clientId) onReady never
+             * fired, so this promise never settled and load() hung, leaving
+             * the studio on a blank screen with no message.
+             *
+             * On failure we resolve rather than reject, so the caller falls
+             * back to the guest user instead of throwing.
+             */
             keycloak.init({
               onLoad: 'check-sso',
               silentCheckSsoRedirectUri: window.location.origin + (process.env.BASE_URL || '/').replace(/\/+$/, '') + '/sso.html'
-            })
-          
-            keycloak.onReady = () => {
-              if (!keycloak.authenticated){
-                this.logger.log(-1, 'init() > need login')
-                keycloak.login()
-                resolve()
-              } else {
+            }).then((authenticated) => {
+                if (!authenticated) {
+                  this.logger.log(-1, 'init() > need login')
+                  keycloak.login()
+                  resolve()
+                  return
+                }
                 this.logger.log(-1, 'init() > user logged in')
-                keycloak.loadUserProfile().then(async user => {
+                keycloak.loadUserProfile().then(async (user) => {
                   this.logger.log(-1, 'init()', 'user loaded', user)
                   const quxUser = {
                     id:user.id,
@@ -63,13 +78,29 @@ class KeyCloakService extends AbstractService{
                   }
                   this.isInited = true
                   this.setUser(quxUser)
-                  await this._post('/rest/user/external', quxUser)
+                  try {
+                    await this._post('/rest/user/external', quxUser)
+                  } catch (e) {
+                    this.logger.error('init() > could not create external user', e)
+                  }
                   resolve()
-                  
-                  setInterval(async () => {
-                    await keycloak.updateToken(300).catch(() => {
-                      Logger.error('Keycloak failed to refresh token')
+
+                  this._refreshInterval = setInterval(async () => {
+                    const refreshed = await keycloak.updateToken(300).catch((err) => {
+                      this.logger.error('init() > failed to refresh token', err)
+                      return false
                     })
+                    /**
+                     * Do not fall through to setUser() when the refresh
+                     * failed: updateToken rejects without touching the
+                     * token, so a stale or missing one was being written over
+                     * a still good one and the whole app silently degraded
+                     * to anonymous.
+                     */
+                    if (!refreshed || !keycloak.token) {
+                      this.logger.error('init() > token refresh failed, keeping current session')
+                      return
+                    }
                     const quxUser = {
                         id:user.id,
                         name: user.username,
@@ -79,20 +110,20 @@ class KeyCloakService extends AbstractService{
                     }
                     this.setUser(quxUser)
                   }, this.REFRESH_INTERVAl)
-              
+
                 })
-              
-              }
-            }
-          
+
+            }).catch((err) => {
+              this.logger.error('init() > error', err)
+              resolve()
+            })
+
             keycloak.onAuthLogout = () => {
               this.logger.log(-1, 'onAuthLogout()')
             }
-            this.keycloak = keycloak   
-            this.logger.log(-1, 'init() > exit')   
+            this.logger.log(-1, 'init() > exit')
         })
-       
-       
+        return this.initPromise
     }
 
     signup () {
@@ -110,6 +141,16 @@ class KeyCloakService extends AbstractService{
     logout () {
         this.logger.log(-1, 'KeyCloakService.logout()')
         localStorage.removeItem('quxKeyCloakUser');
+        /**
+         * The refresh interval used to be dropped on the floor, so every
+         * login/logout cycle left another timer running forever.
+         */
+        if (this._refreshInterval) {
+            clearInterval(this._refreshInterval)
+            this._refreshInterval = null
+        }
+        this.isInited = false
+        this.initPromise = null
         if (this.keycloak) {
             this.keycloak.logout()
         }

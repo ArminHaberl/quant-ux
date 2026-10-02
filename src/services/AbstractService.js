@@ -33,6 +33,50 @@ export default class AbstractService {
      */
     addHeaders() {}
 
+    /**
+     * A 2xx that is not exactly 200 still carries a result (201, 202, 204).
+     */
+    _isSuccess (res) {
+        return res.status >= 200 && res.status < 300
+    }
+
+    /**
+     * Read the body once and parse it, tolerating an empty body and
+     * reporting a malformed one as a rejection.
+     *
+     * This used to be `res.json().then(j => {...})` with no catch on the
+     * inner promise. The outer catch cannot see an inner rejection, so a
+     * 200 with an empty or non JSON body (a DELETE, or a proxy that
+     * returned an HTML error page with a 200) left the returned promise
+     * pending forever and every `await` on it hung.
+     */
+    _parseJSON (res, url) {
+        return res.text().then((text) => {
+            if (!text) {
+                return null
+            }
+            try {
+                return JSON.parse(text)
+            } catch (e) {
+                throw new Error('Could not parse response from ' + url + ': ' + e.message)
+            }
+        })
+    }
+
+    /**
+     * Single place that does the fetch, the status check and the body parse.
+     * Rejects on any non 2xx so callers do not each reimplement it.
+     */
+    _request (url, options, label) {
+        return fetch(url, options).then((res) => {
+            if (this._isSuccess(res)) {
+                return this._parseJSON(res, url)
+            }
+            this.onError(url, res)
+            throw new Error('Could not ' + label + ' ' + url)
+        })
+    }
+
     _getChached (url, successCallback, errorCallback) {
         this.logger.log(6, '_getChached', 'enter ', url)
         return new Promise((resolve, reject) => {
@@ -45,33 +89,22 @@ export default class AbstractService {
                 return
             }
 
-
              /**
               * else do fetch
               */
-            fetch(url, {
+            this._request(url, {
                 method: 'get',
                 credentials: "same-origin",
                 headers: this._createDefaultHeader()
-            }).then((res) => {
-                if (res.status === 200) {
-                    res.json().then(j => {
-                        this.logger.log(6, '_getChached', 'exit (fetch)')
-                        if (!this._cache) {
-                            this._cache = {}
-                        }
-                        this._cache[url] = j
-                        resolve(j)
-                        if (successCallback) {
-                            successCallback(j)
-                        }
-                    })
-                } else {
-                    this.onError(url, res)
-                    if (errorCallback) {
-                        errorCallback(new Error('Could not load ...'))
-                    }
-                    reject(new Error('Could not load ' + url))
+            }, 'load').then((j) => {
+                this.logger.log(6, '_getChached', 'exit (fetch)')
+                if (!this._cache) {
+                    this._cache = {}
+                }
+                this._cache[url] = j
+                resolve(j)
+                if (successCallback) {
+                    successCallback(j)
                 }
             }).catch((err) => {
                 if (errorCallback) {
@@ -84,129 +117,80 @@ export default class AbstractService {
 
     _get(url, successCallback, errorCallback) {
         this.logger.log(6, '_get', 'enter ' + url)
-        return new Promise((resolve, reject) => {
-            fetch(url, {
-                method: 'get',
-                credentials: "same-origin",
-                headers: this._createDefaultHeader()
-            }).then((res) => {
-                if (res.status === 200) {
-                    res.json().then(j => {
-                        this.logger.log(6, '_get', 'exit ')
-                        resolve(j)
-                        if (successCallback) {
-                            successCallback(j)
-                        }
-                    })
-                } else {
-                    this.onError(url, res)
-                    if (errorCallback) {
-                        errorCallback(new Error('Could not load ...'))
-                    }
-                    reject(new Error('Could not load ' + url))
-                }
-            }).catch((err) => {
-                if (errorCallback) {
-                    errorCallback(err)
-                }
-                reject(err)
-            })
+        return this._request(url, {
+            method: 'get',
+            credentials: "same-origin",
+            headers: this._createDefaultHeader()
+        }, 'load').then((j) => {
+            this.logger.log(6, '_get', 'exit ')
+            if (successCallback) {
+                successCallback(j)
+            }
+            return j
+        }).catch((err) => {
+            if (errorCallback) {
+                errorCallback(err)
+            }
+            throw err
         })
     }
 
     _post(url, data, successCallback, errorCallback) {
         this.logger.log(6, '_post', 'enter ' + url)
-        return new Promise((resolve, reject) => {
-            fetch(url, {
-                method: 'post',
-                credentials: "same-origin",
-                body: JSON.stringify(data),
-                headers: this._createDefaultHeader()
-            }).then((res) => {
-                if (res.status === 200) {
-                    res.json().then(j => {
-                        this.logger.log(6, '_post', 'exit ')
-                        if (successCallback) {
-                            successCallback(j)
-                        }
-                        resolve(j)
-                    })
-                } else {
-                    this.onError(url, res)
-                    if (errorCallback) {
-                        errorCallback(new Error('Could not _post ...'))
-                    }
-                    reject(new Error('Could not post ' + url))
-                }
-            }).catch((err) => {
-                if (errorCallback) {
-                    errorCallback(err)
-                }
-                reject(err)
-            })
+        return this._request(url, {
+            method: 'post',
+            credentials: "same-origin",
+            body: JSON.stringify(data),
+            headers: this._createDefaultHeader()
+        }, 'post').then((j) => {
+            this.logger.log(6, '_post', 'exit ')
+            if (successCallback) {
+                successCallback(j)
+            }
+            return j
+        }).catch((err) => {
+            if (errorCallback) {
+                errorCallback(err)
+            }
+            throw err
         })
     }
 
     _put(url, data, successCallback, errorCallback) {
         this.logger.log(6, '_put', 'enter ' + url)
-        return new Promise((resolve, reject) => {
-            fetch(url, {
-                method: 'put',
-                credentials: "same-origin",
-                body: JSON.stringify(data),
-                headers: this._createDefaultHeader()
-            }).then((res) => {
-                if (res.status === 200) {
-                    res.json().then(j => {
-                        this.logger.log(6, '_put', 'exit ')
-                        if (successCallback) {
-                            successCallback(j)
-                        }
-                        resolve(j)
-                    })
-                } else {
-                    if (errorCallback) {
-                        errorCallback(new Error('Could not _put ...'))
-                    }
-                    reject(new Error('Could not put ' + url))
-                }
-            }).catch((err) => {
-                this.onError(url)
-                if (errorCallback) {
-                    errorCallback(err)
-                }
-                reject(err)
-            })
+        return this._request(url, {
+            method: 'put',
+            credentials: "same-origin",
+            body: JSON.stringify(data),
+            headers: this._createDefaultHeader()
+        }, 'put').then((j) => {
+            this.logger.log(6, '_put', 'exit ')
+            if (successCallback) {
+                successCallback(j)
+            }
+            return j
+        }).catch((err) => {
+            if (errorCallback) {
+                errorCallback(err)
+            }
+            throw err
         })
     }
 
     _delete(url, successCallback, errorCallback, header) {
-        return new Promise((resolve, reject) => {
-            fetch(url, {
-                method: 'delete',
-                headers: this._createDefaultHeader(header)
-            }).then((res) => {
-                if (res.status === 200) {
-                    res.json().then(j => {
-                        this.logger.log(6, '_put', 'exit ')
-                        if (successCallback) {
-                            successCallback(j)
-                        }
-                        resolve(j)
-                    })
-                } else {
-                    this.onError(url, res)
-                    if (errorCallback) {
-                        errorCallback(new Error('Could not delete ...'))
-                    }
-                    reject(new Error('Could not delete'))
-                }
-            }).catch(function (err) {
-                if (errorCallback) {
-                    errorCallback(err)
-                }
-                reject(new Error('Could not delete'))
-            })
+        return this._request(url, {
+            method: 'delete',
+            headers: this._createDefaultHeader(header)
+        }, 'delete').then((j) => {
+            if (successCallback) {
+                successCallback(j)
+            }
+            return j
+        }).catch((err) => {
+            if (errorCallback) {
+                errorCallback(err)
+            }
+            throw new Error('Could not delete')
         })
     }
 

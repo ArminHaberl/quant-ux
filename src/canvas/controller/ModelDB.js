@@ -60,9 +60,13 @@ export default class ModelDB {
     }
   }
 
-  get (id) {
-    this.logger.log(1, 'get', 'enter', id)
-    return new Promise(async (resolve) => {
+async get (id) {
+      this.logger.log(1, 'get', 'enter', id)
+      /**
+       * Plain async function rather than new Promise(async ...): every exit
+       * below already resolves, and the wrapper made the flow harder to
+       * follow for no gain.
+       */
       try {
         let db = await this._getDB()
         if (db) {
@@ -70,23 +74,22 @@ export default class ModelDB {
           var objectStore = transaction.objectStore("quxModels");
           var request = objectStore.get(id);
 
-          request.onerror = event =>{
-            this.logger.log(-1, 'get', 'error', event)
-            resolve(null)
-          };
+          return new Promise((resolve) => {
+            request.onerror = () => {
+              this.logger.log(-1, 'get', 'error')
+              resolve(null)
+            };
 
-          request.onsuccess = event => {
-            this.logger.log(3, 'get', 'success', event)
-            resolve(request.result)
-          };
-        } else {
-          resolve(null)
+            request.onsuccess = () => {
+              this.logger.log(3, 'get', 'success')
+              resolve(request.result)
+            };
+          });
         }
+        return null
       } catch (err){
-        this.logger.error('save', 'ERROR', err)
-        resolve(null)
+        this.logger.error('get', 'ERROR', err)
+        return null
       }
-    })
-
-  }
+    }
 }

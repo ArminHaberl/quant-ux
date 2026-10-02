@@ -73,13 +73,26 @@ class RestEngine {
     }
     
     async fillString (s, values, encodeFiles = true) {
+        /**
+         * An unset optional field (request.token is null for a REST widget
+         * with no auth) used to reach fillSimpleString and throw
+         * "cannot read replace of null" out of the middle of the request.
+         */
+        if (s === undefined || s === null) {
+            return s
+        }
         const finalValues = {}
         for (let key in values) {
             let value = this.getValueByKey(values, key)
             value = await this.getStringFilelValue(value, encodeFiles)
             finalValues[key] = value
         }
-        s = this.fillSimpleString(s, values)
+        /**
+         * finalValues, not values: the loop above exists to base64 encode
+         * uploaded files, and substituting the raw values put a "[object
+         * File]" into the request body.
+         */
+        s = this.fillSimpleString(s, finalValues)
         if (s.indexOf('${') >= 0){
             Logger.error("RestEngine.fillString() > error" ,s)
             throw new Error("fillString() > Not all parameters replaced!" + s)
@@ -88,7 +101,15 @@ class RestEngine {
     }
 
     fillSimpleString (template, values) {
-        return template.replace(/\${(.*?)}/g, (match, key) => values[key.trim()] || match);
+        return template.replace(/\${(.*?)}/g, (match, key) => {
+            /**
+             * Not `values[key] || match`: 0, '' and false are legitimate
+             * values, and treating them as missing left the ${...} in place
+             * so fillString() then threw "Not all parameters replaced".
+             */
+            const value = values[key.trim()]
+            return value === undefined || value === null ? match : value
+        });
     }
 
 
@@ -150,149 +171,119 @@ class RestEngine {
         });
     }
 
-    handleOutput (resolve, request, response) {
+    /**
+     * Turns a fetch response into the value the REST widget binds to, and
+     * throws for anything it cannot represent.
+     *
+     * This used to take a `resolve` callback. An unrecognised output type
+     * therefore returned without calling resolve and the caller waited
+     * forever, so an unsupported type is now an explicit error.
+     */
+    async handleOutput (request, response) {
         Logger.log(2, "RestEngine.handleOutput() > enter" ,response)
-     
-        if (response.status == 200 || response.status == 201) {
+
+        if (response.status == 200 || response.status == 201 || response.status == 204) {
             if (request.output.type === "JSON") {
                 try {
-                    resolve(response.json())
+                    return await response.json()
                 } catch (e){
                     throw new Error(`Could not ${request.method} ${request.url}: ${e.message}`)
                 }
             }
             if (request.output.type === "TEXT") {
-                resolve(response.text())
+                return await response.text()
             }
             if (request.output.type === "IMAGE") {
-                response.arrayBuffer().then((buffer) => {
-                    resolve(buffer)
-                });
+                return await response.arrayBuffer()
             }
-            return;
+            throw new Error(`Could not ${request.method} ${request.url}: unsupported output type '${request.output && request.output.type}'`)
         }
         throw new Error(`Could not ${request.method} ${request.url}: ${response.statusText}`)
     }
 
-    get (request, values) {
-        return new Promise( async (resolve, reject) => {
-            let url = await this.buildURL(request, values)
-            let header = await this.createDefaultHeader(request, values)
+    async get (request, values) {
+        const url = await this.buildURL(request, values)
+        const header = await this.createDefaultHeader(request, values)
 
-            fetch(url, {
-                method: "GET",
-                mode: 'cors',
-                cache: 'no-cache',
-                headers: header,
-                redirect: 'follow',
-                referrer: 'no-referrer'
-            })
-            .then(response => {
-                this.handleOutput(resolve, request, response)
-            }).catch (e => {
-                reject(e)
-            });
+        const response = await fetch(url, {
+            method: "GET",
+            mode: 'cors',
+            cache: 'no-cache',
+            headers: header,
+            redirect: 'follow',
+            referrer: 'no-referrer'
         })
+        return this.handleOutput(request, response)
     }
 
-    postOrPostImage (request, values) {
-        return new Promise( async (resolve, reject) => {
-            const url = await this.buildURL(request, values)
-            const header = await this.createDefaultHeader(request, values)
-            const formData = new FormData()
-            for (let key in values) {
-                formData.append(key, values[key])
-            }
+    async postOrPostImage (request, values) {
+        const url = await this.buildURL(request, values)
+        const header = await this.createDefaultHeader(request, values)
+        const formData = new FormData()
+        for (let key in values) {
+            formData.append(key, values[key])
+        }
 
-            fetch(url, {
-                method: request.method,
-                mode: 'cors',
-                cache: 'no-cache',
-                headers: header,
-                redirect: 'follow',
-                referrer: 'no-referrer',
-                body: formData
-            })
-            .then(response => {
-                this.handleOutput(resolve, request, response)
-            }).catch (e => {
-                reject(e)
-                throw e;
-            });
+        const response = await fetch(url, {
+            method: request.method,
+            mode: 'cors',
+            cache: 'no-cache',
+            headers: header,
+            redirect: 'follow',
+            referrer: 'no-referrer',
+            body: formData
         })
+        return this.handleOutput(request, response)
     }
 
-    postOrPutForm (request, values) {
+    async postOrPutForm (request, values) {
         Logger.log(1, "RestEngine.postOrPutForm() > enter >")
-        return new Promise( async (resolve, reject) => {
+        const url = await this.buildURL(request, values)
+        const formData = await this.buildFormData(request, values)
+        const header = await this.createDefaultHeader(request, values)
 
-            const url = await this.buildURL(request, values)
-            const formData = await this.buildFormData(request, values)
-            const header = await this.createDefaultHeader(request, values)
-
-            fetch(url, {
-                method: request.method,
-                mode: 'cors',
-                cache: 'no-cache',
-                headers: header,
-                redirect: 'follow',
-                referrer: 'no-referrer',
-                body: formData
-            })
-            .then(response => {
-                this.handleOutput(resolve, request, response)
-            }).catch (e => {
-                reject(e)
-                throw e;
-            });
+        const response = await fetch(url, {
+            method: request.method,
+            mode: 'cors',
+            cache: 'no-cache',
+            headers: header,
+            redirect: 'follow',
+            referrer: 'no-referrer',
+            body: formData
         })
+        return this.handleOutput(request, response)
     }
 
-    postOrPut (request, values) {
-        return new Promise( async (resolve, reject) => {
+    async postOrPut (request, values) {
+        const url = await this.buildURL(request, values)
+        const data = await this.buildData(request, values)
+        const header = await this.createDefaultHeader(request, values)
 
-            let url = await this.buildURL(request, values)
-            let data = await this.buildData(request, values)
-            let header = await this.createDefaultHeader(request, values)
-
-            fetch(url, {
-                method: request.method,
-                mode: 'cors',
-                cache: 'no-cache',
-                headers: header,
-                redirect: 'follow',
-                referrer: 'no-referrer',
-                body: data
-            })
-            .then(response => {
-                this.handleOutput(resolve, request, response)
-            }).catch (e => {
-                reject(e)
-                throw e;
-            });
+        const response = await fetch(url, {
+            method: request.method,
+            mode: 'cors',
+            cache: 'no-cache',
+            headers: header,
+            redirect: 'follow',
+            referrer: 'no-referrer',
+            body: data
         })
+        return this.handleOutput(request, response)
     }
 
-    delete (request, values) {
-        return new Promise( async (resolve, reject) => {
-            let url = await this.buildURL(request, values)
-            let header = await this.createDefaultHeader(request, values)
+    async delete (request, values) {
+        const url = await this.buildURL(request, values)
+        const header = await this.createDefaultHeader(request, values)
 
-            fetch(url, {
-                method: "DELETE",
-                mode: 'cors',
-                cache: 'no-cache',
-                headers: header,
-                redirect: 'follow',
-                referrer: 'no-referrer'
-            })
-            .then(response => {
-                this.handleOutput(resolve, request, response)
-            }).catch (e => {
-                reject(e)
-                throw e;
-            });
+        const response = await fetch(url, {
+            method: "DELETE",
+            mode: 'cors',
+            cache: 'no-cache',
+            headers: header,
+            redirect: 'follow',
+            referrer: 'no-referrer'
         })
+        return this.handleOutput(request, response)
     }
 
     async createDefaultHeader(request, values) {
@@ -300,7 +291,8 @@ class RestEngine {
         let authType= request.authType ? request.authType : 'Bearer'
         let headers = {}
 
-        if (request.input.type === 'JSON') {
+        const inputType = request.input ? request.input.type : null
+        if (inputType === 'JSON') {
             headers['Content-Type'] = 'application/json'
             headers['Accept'] = 'application/json'
         }

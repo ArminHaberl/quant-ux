@@ -52,53 +52,49 @@ export default class FigmaService {
     return pages
   }
 
-  getImages (key, ids, scale=2) {
-    Logger.log(1, 'getImages() > enter', scale)
-    return new Promise ((resolve, reject) => {
-      /**
-       * Get in double resolution
-       */
-      let url = this.baseURL + 'images/' + key + '?format=png&scale=' + scale + '&ids=' + ids
-      fetch(url, {
-        method: 'get',
-        credentials: "same-origin",
-        headers: this._createDefaultHeader()
-      }).then(resp => {
-        resp.json().then(json => {
-          try {
-            resolve(json)
-          } catch (err) {
-            Logger.error('get() > Error', err)
-            reject(err)
-          }
-        })
-      }, err => {
-        reject(err)
-      })
+  /**
+   * Fetch and parse, rejecting on a bad status or an unparseable body.
+   *
+   * These used to be `resp.json().then(json => resolve(json))` with the
+   * rejection unobserved, so a non JSON body left the promise pending
+   * forever. getImages is awaited inside a Promise.all by parse(), so that
+   * hung the entire Figma import with the progress dialog stuck open.
+   */
+  async _fetchJSON (url) {
+    const resp = await fetch(url, {
+      method: 'get',
+      credentials: "same-origin",
+      headers: this._createDefaultHeader()
     })
+    if (resp.status !== 200) {
+      throw new Error('Figma responded with HTTP ' + resp.status)
+    }
+    const text = await resp.text()
+    if (!text) {
+      return null
+    }
+    try {
+      return JSON.parse(text)
+    } catch (e) {
+      throw new Error('Could not parse response from Figma: ' + e.message)
+    }
+  }
+
+  async getImages (key, ids, scale=2) {
+    Logger.log(1, 'getImages() > enter', scale)
+    /**
+     * Get in double resolution
+     */
+    let url = this.baseURL + 'images/' + key + '?format=png&scale=' + scale + '&ids=' + ids
+    return this._fetchJSON(url)
   }
 
   async get (key) {
     Logger.log(1, 'get() > enter :' + key)
-    return new Promise ((resolve, reject) => {
-      let url = this.baseURL + 'files/' + key + '?geometry=paths&plugin_data=' + this.pluginId
-      fetch(url, {
-        method: 'get',
-        credentials: "same-origin",
-        headers: this._createDefaultHeader()
-      }).then(resp => {
-        if (resp.status === 200) {
-          resp.json().then(json => {
-            console.debug('get ', json)
-            resolve(json)
-          })
-        } else {
-          reject(new Error('Wrong Status'))
-        }
-      }, err => {
-        reject(err)
-      })
-    })
+    let url = this.baseURL + 'files/' + key + '?geometry=paths&plugin_data=' + this.pluginId
+    const json = await this._fetchJSON(url)
+    console.debug('get ', json)
+    return json
   }
 
   async parse (id, fModel, importChildren, screenSize, selectedPages = []) {
@@ -108,7 +104,7 @@ export default class FigmaService {
 
     if (fDoc.children) {
       fDoc.children.forEach(page => {
-        if (page.children && selectedPages.indexOf(page.id) >= 0 || selectedPages.length === 0) {
+        if (page.children && (selectedPages.indexOf(page.id) >= 0 || selectedPages.length === 0)) {
           Logger.log(1, 'parse() > enter page:' + page.id, page.id)
           page.children.forEach(screen => {
             if (screen.visible !== false) {
@@ -147,7 +143,7 @@ export default class FigmaService {
 
     if (fDoc.children) {
       fDoc.children.forEach(page => {
-        if (page.children && selectedPages.indexOf(page.id) >= 0 || selectedPages.length === 0) {
+        if (page.children && (selectedPages.indexOf(page.id) >= 0 || selectedPages.length === 0)) {
           Logger.log(1, 'parse() > enter page:' + page.id, page.id)
           page.children.forEach(screen => {
             if (screen.visible !== false) {

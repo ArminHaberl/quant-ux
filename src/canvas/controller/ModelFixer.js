@@ -119,12 +119,23 @@ class ModelFixer {
 				fixed = true
 				difY = s.y * 2
 			}
-			if (difY > 0 || difY > 0) {
+			if (difX > 0 || difY > 0) {
 				for (let i = 0; i < s.children.length; i++) {
-					let widgetID = screen.children[i]
+					/**
+					 * s.children, not screen: the loop variable is s and there
+					 * is no screen in scope, so this resolved to the global
+					 * window.screen and screen.children was undefined. The
+					 * condition above also tested difY twice, so difX was
+					 * never checked. Together they threw a TypeError on
+					 * every model with a negative coordinate screen, which
+					 * is why this fix never ran.
+					 */
+					let widgetID = s.children[i]
 					let widget = m.widgets[widgetID]
-					widget.x += difX
-					widget.y += difY
+					if (widget) {
+						widget.x += difX
+						widget.y += difY
+					}
 				}
 			}
 		}

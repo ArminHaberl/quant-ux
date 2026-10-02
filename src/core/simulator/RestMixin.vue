@@ -19,7 +19,12 @@ export default {
       const widgets = this.getLoadRests()
       for (let i=0; i< widgets.length; i++) {
           const widget = widgets[i]
-          this.executeRest(widget)
+          /**
+           * Awaited: callers await initLoadRest() before rendering the first
+           * screen. Firing and forgetting meant rendering continued with empty
+           * dataBindingValues and no WidgetInit for the bound widgets.
+           */
+          await this.executeRest(widget)
       }
       this.logger.log(2,"initLoadRest","exit", this.dataBindingValues );
     },
@@ -86,16 +91,23 @@ export default {
 
       try {
         const result = await RestEngine.run(rest, data)
-        if (rest.output.databinding) {
-          this.setDataBindingByKey(rest.output.databinding, result)
+        const databinding = rest.output && rest.output.databinding
+        if (databinding) {
+          this.setDataBindingByKey(databinding, result)
           // since 4.0.70 we also can the data binding...
-          this.updateAllDataBindings(this.currentScreen.id, rest.output.databinding, result)
-          this.logger.log(-1, "executeRest","set data " + rest.output.databinding, this.dataBindingValues);
+          this.updateAllDataBindings(this.currentScreen.id, databinding, result)
+          this.logger.log(-1, "executeRest","set data " + databinding, this.dataBindingValues);
         }
         return true
       } catch (e) {
-        if (rest.output.databinding) {
-          this.setDataBindingByKey(rest.output.databinding, "ERROR")
+        /**
+         * Guarded the same way as the try branch: dereferencing rest.output
+         * here threw a second TypeError out of the catch, which rejected
+         * executeRest and took down the caller's await as well.
+         */
+        const databinding = rest.output && rest.output.databinding
+        if (databinding) {
+          this.setDataBindingByKey(databinding, "ERROR")
         }
         this.logger.error("executeRest","error", e);
         this.emit('onRestError', e, rest, data)
