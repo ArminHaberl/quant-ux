@@ -132,7 +132,7 @@ export default {
 				const isCntrl = e.ctrlKey || e.metaKey;
 
 				// right mouse click
-				if (e.button === 2){
+				if (e.button !== 0){
 					return false
 				}
 
@@ -351,7 +351,7 @@ export default {
 					 * We distaptch in the touch div, but we want to move the parent
 					 */
 					div = div.parentNode
-					this.onDragStart(div,{ id : lineID, i : pointIndex, l: line} , "onLinePointDnDStart", "onLinePointDnDMove", "onLinePointDnDEnd", "onLinePointDnDClikc", e);
+					this.onDragStart(div,{ id : lineID, i : pointIndex, l: line} , "onLinePointDnDStart", "onLinePointDnDMove", "onLinePointDnDEnd", "onLinePointDnClick", e);
 				}
 			},
 

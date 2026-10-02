@@ -223,7 +223,7 @@ export default class Snapp extends Screen {
 				return (screen.x + this.model.grid.w * line.line);
 			}
 
-		} else if("Screen" == line.type || "Widget" == line.type){
+		} else if("Screen" == line.type || "Widget" === line.type){
 			let box = this.getBoxById(line.id);
 			return this.getSnappValue(box, line);
 		} else if ("Mirror" == line.type) {
@@ -260,7 +260,7 @@ export default class Snapp extends Screen {
 				return (screen.y + (this.model.grid.h * line.line));
 			}
 	
-		} else if ("Screen" == line.type || "Widget" == line.type){
+		} else if ("Screen" == line.type || "Widget" === line.type){
 			let box = this.getBoxById(line.id);
 			return this.getSnappValue(box, line);
 		} else if ("Mirror" == line.type) {

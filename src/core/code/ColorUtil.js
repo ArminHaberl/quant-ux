@@ -57,6 +57,6 @@ export function getGradientCSS(gradient) {
     const color = sortedColors[i];
     value += "," + color.c + " " + color.p + "% ";
   }
-  value + ");";
+  value += ");";
   return value;
 }

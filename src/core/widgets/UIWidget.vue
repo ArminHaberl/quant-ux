@@ -1414,10 +1414,10 @@ export default {
     this.beforeDestroy()
   },
   mounted() {
-    if (this.qWidget) {
-      this.render(this.qWidget, this.qWidget.style, this.qQcaleX, this.qQcaleX, false);
-    }
     this.logger = new Logger('UIWidget')
+    if (this.qWidget) {
+      this.render(this.qWidget, this.qWidget.style, this.qQcaleX, this.qQcaleY);
+    }
   }
 };
 </script>

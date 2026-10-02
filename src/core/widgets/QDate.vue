@@ -347,7 +347,7 @@ export default {
       if (range.from && range.to) {
         var to = this.convertQDateToMillis(range.to);
         var from = this.convertQDateToMillis(range.from);
-        var days = Math.floor(to - from) / dayInMS;
+        var days = Math.floor((to - from) / dayInMS);
         for (var i = 0; i < days + 1; i++) {
           var d = this.convertMillisToQDate(from + dayInMS * i);
           this.renderSelectedDay(d, (i != 0) & (i != days));

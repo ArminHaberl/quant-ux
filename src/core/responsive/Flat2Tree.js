@@ -136,7 +136,7 @@ function addLayoutType (element, useRows) {
 
 
 	if (element.children) {
-		element.children.forEach(child => addLayoutType(child, element))
+		element.children.forEach(child => addLayoutType(child, useRows))
 	}
 
 	return element

@@ -1003,7 +1003,7 @@ export default {
       /**
        * 2) If SHIFT, CTRL or ALT is pressed, we add things to an selection
        */
-      if (e && e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) {
+      if (e && (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey)) {
         this._expandSelectionById(id)
       } else {
         this.setSelectionById(id)

@@ -387,7 +387,7 @@ export default class CSSPosition {
 			result += `  left: ${this.getResponsiveLeft(widget)};\n`
 		}
 		if (Util.isPinnedDown(widget)) {
-			result += `  bottom: ${widget.bottom}px;\n`
+			result += `  bottom: ${this.getPinnedBottom(widget)};\n`
 		} else {
 			result += `  top: ${widget.y}px;\n`
 		}

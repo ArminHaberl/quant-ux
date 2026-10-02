@@ -736,7 +736,11 @@ export default {
       if (month < 10) {
         month = '0' + month
       }
-      return `${d.getFullYear()}-${month}-${d.getDate()}`
+      let day = d.getDate()
+      if (day < 10) {
+        day = '0' + day
+      }
+      return `${d.getFullYear()}-${month}-${day}`
     },
 
     isEqualDate: function(a, b) {

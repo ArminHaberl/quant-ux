@@ -13,7 +13,7 @@ export default class Animation extends Core{
 			"slideUp": "slideDown",
 			"slideDown": "slideUp",
 			"fadeIn": "fadeOut",
-			"fadeOut": "fadeInt",
+			"fadeOut": "fadeIn",
 			"rotateInTopLeft": "rotateOutTopLeft",
 			"zoomIn": "zoomInInverse",
 			"slideLeftUp": "slideLeftUpInverse",

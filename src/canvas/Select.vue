@@ -259,7 +259,7 @@ import * as LayoutContainerUtil from 'core/LayoutContainerUtil'
 
 			// Since 4.6.0 we listen to real double clicks. We must make sure
 			// this works only on the selected widget
-			if (!this._selectWidget ?? this._selectWidget.id !== widgetID) {
+			if (!this._selectWidget || this._selectWidget.id !== widgetID) {
 				return
 			}
 			const widget = this.model.widgets[widgetID]

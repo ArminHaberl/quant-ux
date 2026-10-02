@@ -462,7 +462,7 @@ export default class ResponsiveLayout {
             if (ExportUtil.isPinnedUp(child)) {
                 // nothing
             } else if (ExportUtil.isPinnedDown(child)) {            
-                const newY = (newParent.h + newParent.h) - (child.h + distanceBottom)
+                const newY = (newParent.h + newParent.y) - (child.h + distanceBottom)
                 newChildPos.y = newY
                 newChildPos.b = distanceBottom
             } else {

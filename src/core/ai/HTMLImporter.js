@@ -171,8 +171,10 @@ export default class HTMLImporter {
 
                 s.children.forEach(id => {
                     const widget = app.widgets[id]
+                    widget.x = Math.floor(widget.x * f)
                     widget.y = Math.floor(widget.y * f)
                     widget.w = Math.ceil(widget.w * f)
+                    widget.h = Math.ceil(widget.h * f)
                     if (widget.style.fontSize) {
                         widget.style.fontSize = Math.floor(widget.style.fontSize  * f)
                     }
@@ -969,7 +971,7 @@ function isReset(node) {
 }
 
 function isPassword(node) {
-    node.type && node.type.toLowerCase() === 'password'
+    return node.type && node.type.toLowerCase() === 'password'
 }
 
 function isCheckBox (node) {

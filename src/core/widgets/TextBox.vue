@@ -520,8 +520,7 @@ export default {
             }
 
             if (operator == "pattern" && validation.pattern) {
-              // eslint-disable-next-line no-undef
-              var reg = new Regex(validation.pattern);
+              var reg = new RegExp(validation.pattern);
               return reg.test(value);
             }
 

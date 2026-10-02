@@ -391,9 +391,9 @@ export default class YAMLImporter extends HTMLImporter {
             result.borderStyle = "solid"
             result.color = "@form-color"
             result.borderRadius = "@border-radius"
-            result.paddingBottom = "@form-padding-vertical",
-			result.paddingTop = "@form-padding-vertical",
-			result.paddingLeft = "@form-padding-horizontal",
+            result.paddingBottom = "@form-padding-vertical"
+			result.paddingTop = "@form-padding-vertical"
+			result.paddingLeft = "@form-padding-horizontal"
 			result.paddingRight = "@form-padding-horizontal"
             result.headerFontWeight = 800
             result.headerBackground = "@form-border-color"
@@ -427,9 +427,9 @@ export default class YAMLImporter extends HTMLImporter {
             result.borderStyle = "solid"
             result.borderRadius = "@border-radius"
             result.color = "@form-color"
-            result.paddingBottom = "@form-padding-vertical",
-			result.paddingTop = "@form-padding-vertical",
-			result.paddingLeft = "@form-padding-horizontal",
+            result.paddingBottom = "@form-padding-vertical"
+			result.paddingTop = "@form-padding-vertical"
+			result.paddingLeft = "@form-padding-horizontal"
 			result.paddingRight = "@form-padding-horizontal"
            
             if (node.TYPE === 'Checkbox') {

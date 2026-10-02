@@ -291,7 +291,7 @@ export default {
     initAnalyticSVG() {
       this.logger.log(3, "initAnalyticSVG", "entry");
       let bodySelection = d3.select(this.svgContainer);
-      this.analyticSVG = bodySelection.append("svg").attr("width", this.canvasPos.h).attr("height", this.canvasPos.w);
+      this.analyticSVG = bodySelection.append("svg").attr("width", this.canvasPos.w).attr("height", this.canvasPos.h);
     },
 
     cleanUpAnalyticLines() {

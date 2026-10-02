@@ -149,7 +149,7 @@ export default {
         },
 
         _set_labelFontWeight(parent, style) {
-            this.labelNode.style.fontSize = style.labelFontWeight + 'px'
+            this.labelNode.style.fontWeight = style.labelFontWeight
         },
 
         /**

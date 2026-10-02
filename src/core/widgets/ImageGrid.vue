@@ -96,6 +96,7 @@
             this.value = img.src
             this.emitDataBinding(this.value);
             this.emitClick(e);
+            return
         }
        
         if (this.model?.props?.selectionMode === 'single') {

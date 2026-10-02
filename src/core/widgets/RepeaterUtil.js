@@ -10,7 +10,7 @@ export function calculateGrid(cntrBox, childBox, spacingX, spacingY, isGrid=true
     const childHeight = spacingY < 0 ? childBox.h : childBox.h + spacingY
 
     const columns = Math.max(isGrid ? Math.floor(width / childWidth) : 1, 1)
-    const rows =  Math.floor(height / childHeight)
+    const rows =  Math.max(Math.floor(height / childHeight), 1)
 
     if (spacingX < 0) {
         const restWidth =  width - (columns * childWidth) 
@@ -19,7 +19,7 @@ export function calculateGrid(cntrBox, childBox, spacingX, spacingY, isGrid=true
 
     if (spacingY < 0) {
         const restHeight =  height - (rows * childHeight) 
-        spacingY = Math.max(0,( Math.floor(restHeight / (rows - 1))))
+        spacingY = Math.max(0,( Math.floor(restHeight / Math.max(1, (rows - 1)))))
     } 
 
     return {

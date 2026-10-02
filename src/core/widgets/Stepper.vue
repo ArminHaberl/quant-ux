@@ -64,11 +64,11 @@ export default {
     render: function(model, style, scaleX, scaleY) {
       this.model = model;
 
-      if (model.min) {
-        this.min = model.min;
+      if (model.props.min) {
+        this.min = model.props.min;
       }
-      if (model.max) {
-        this.max = model.max;
+      if (model.props.max) {
+        this.max = model.props.max;
       }
 
       this.style = style;

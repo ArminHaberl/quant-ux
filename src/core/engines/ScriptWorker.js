@@ -37,7 +37,7 @@ self.addEventListener('message', async e => {
 })
 
 async function runCode (js, qux,viewModel, console, sourceEvent) {
-    if (js.indexOf('await ') > 0) {
+    if (js.indexOf('await ') >= 0) {
         Logger.warn('ScriptWoker.runCode() > enter > ASYNC ', js)
         const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
         const aysncJS = `return new Promise(async (resolve) => {
