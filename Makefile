@@ -14,7 +14,7 @@ build-dev:
 
 
 up:
-	 docker compose --file docker/docker-compose.yml up
+	 docker compose --file docker/docker-compose.yml up -d
 
 down:
 	 docker compose --file docker/docker-compose.yml down
