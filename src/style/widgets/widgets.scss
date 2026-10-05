@@ -2069,6 +2069,18 @@
 	cursor: pointer;
 }
 
+/**
+ * Opt in per label via props.selectable. The simulator root sets
+ * user-select: none, which is inherited, so an explicit value here on the
+ * label node is enough to switch selection back on.
+ */
+.MatcSimulator .MatchWidgetTypeLabel .MatcWidgetSelectable{
+	-webkit-user-select: text;
+	-moz-user-select: text;
+	-ms-user-select: text;
+	user-select: text;
+}
+
 
 .MatcWidgetTypeLabelInlineEditable{
 	vertical-align: top;

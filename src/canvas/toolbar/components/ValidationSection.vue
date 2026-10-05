@@ -140,6 +140,7 @@ export default {
 			this._renderDataBinding(model);
 			this._renderSubSection('Content')
 			this._renderTextArea(model.props, 'label', 'Label value', 'Enter a message')
+			this._renderCheck("Selectable in prototype", model.props.selectable, "selectable", "Allow users to select and copy this text in the running prototype")
 
 			if (model?.props?.animated) {		
 				if (model.props.animation === 'chat') {

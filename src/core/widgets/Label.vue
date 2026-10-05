@@ -5,6 +5,7 @@
 <script>
 import DojoWidget from "dojo/DojoWidget";
 import lang from "dojo/_base/lang";
+import css from "dojo/css";
 import UIWidget from "core/widgets/UIWidget";
 
 export default {
@@ -59,10 +60,24 @@ export default {
       }
 
       this.setStyle(style, model);
+      /**
+       * Only the running prototype/replay may allow text selection. The design
+       * canvas renders the same widget class and needs to keep its own
+       * selection, drag & inline edit behaviour.
+       */
+      this.setSelectable((this.mode === "simulator" || this.mode === "view") && !!model.props?.selectable)
       if (model.props && model.props.label) {
         this.setValue(model.props.label);
       } else {
         this.setValue('');
+      }
+    },
+
+    setSelectable (selectable) {
+      if (selectable) {
+        css.add(this.domNode, "MatcWidgetSelectable");
+      } else {
+        css.remove(this.domNode, "MatcWidgetSelectable");
       }
     },
 
