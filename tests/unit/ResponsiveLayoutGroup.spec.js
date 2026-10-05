@@ -1,6 +1,5 @@
 
 import * as TestUtil from './TestUtil'
-import app from './data/groupResponsiveBug.json'
 import app2 from './data/groupResponsiveBug2.json'
 import ResponsiveLayout from '../../src/core/responsive/ResponsiveLayout'
 import ModelGeom from '../../src/core/ModelGeom'

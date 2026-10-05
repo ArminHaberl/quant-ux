@@ -6,7 +6,7 @@ import appTemplateUpdate from './data/templateUpdate.json'
 
 test('Template.js - Update Single Template ', async () => {
    
-    const [controller, model] = TestUtil.createController(appTemplateUpdate)
+    const [controller] = TestUtil.createController(appTemplateUpdate)
 
     expectBackground(controller, 'templates', 'tw10002_15681', '#333333')
     expectBackground(controller, 'widgets', 'w10001_3225', '#9d5252')
@@ -57,7 +57,7 @@ test('Template.js - Update Single Template ', async () => {
 
 test('Template.js - Update Group', async () => {
    
-    const [controller, model] = TestUtil.createController(appTemplateGroupUpdate)
+    const [controller] = TestUtil.createController(appTemplateGroupUpdate)
 
     expectBackground(controller, 'templates', 'tw10007_98856', undefined)
     expectBackground(controller, 'widgets', 'w10003_98230', '#d33939')
@@ -107,10 +107,6 @@ function expectBackground (c, type, id, color) {
     expect(box).not.toBeUndefined()
     expect(box.style.background).toBe(color)
     return lang.clone(box)
-}
-
-function getElement(c, type, id) {
-    return c.model[type][id]
 }
 
 

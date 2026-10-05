@@ -1,6 +1,5 @@
 
 import * as TestUtil from './TestUtil'
-import lang from "../../src/dojo/_base/lang";
 import subgroup from './data/subgroup.json'
 
 test('Group.spec.js - add sub group to exisitng group', async () => {

@@ -2,7 +2,6 @@ import * as TestUtil from './TestUtil'
 import app from './data/gridContainerNested.json'
 import ResponsiveLayout from '../../src/core/responsive/ResponsiveLayout'
 import ModelGeom from '../../src/core/ModelGeom'
-import * as SnappUtil from '../../src/core/SnappUtil'
 
 
 test('GridContainerNestedBug.spec.js - Zoom 1', async () => {

@@ -1,5 +1,4 @@
 
-import * as TestUtil from './TestUtil'
 import figmaAnchorLinks from './data/figmaAnchorLinks.json'
 import FigmaService from '../../src/services/FigmaService'
 

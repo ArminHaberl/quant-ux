@@ -1,4 +1,3 @@
-import app from './data/gridContainer.json'
 import * as GridUtil from '../../src/core/GridUtil'
 
 

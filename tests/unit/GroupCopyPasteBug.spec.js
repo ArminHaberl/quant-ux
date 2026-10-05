@@ -1,6 +1,5 @@
 
 import * as TestUtil from './TestUtil'
-import app from './data/groupCopyPasteBug.json'
 import screenCopy from './data/screenCopyGroupBug.json'
 
 // test('GroupCopyPasteBug.js - test copy', async () => {
@@ -18,7 +17,7 @@ import screenCopy from './data/screenCopyGroupBug.json'
 
 test('GroupCopyPasteBug.js - screenCopy', async () => {
    
-    const [controller, model] = TestUtil.createController(screenCopy)
+    const [controller] = TestUtil.createController(screenCopy)
    
     controller.onCopyScreen('s10000_33759', {x:0, y:0})
 

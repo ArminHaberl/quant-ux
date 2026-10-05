@@ -6,9 +6,6 @@ test('Test ModelUtil2.explodeGroupSelection() > getBoxesInSelection(false) ', as
 
     const result = DistributionUtil.getBoxesInSelection(alignmentBug2, ["w10011_49270", "w10017_23374", "w10018_20189"], true)
     expect(result.length).toBe(3)
-
-    const result2 = DistributionUtil.getBoxesInSelection(alignmentBug2, ["w10011_49270", "w10017_23374", "w10018_20189", "g10034_6454" ], true)
-    expect(result.length).toBe(3)
 })
 
 

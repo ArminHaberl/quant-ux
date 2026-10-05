@@ -3,7 +3,7 @@ import * as TestUtil from './TestUtil'
 
 test('Test CommandStack >  changeStack() test compact ', async () => {
 
-    const [controller, model, data] = TestUtil.createController(commandStackApp)
+    const [controller] = TestUtil.createController(commandStackApp)
 
     const commandChangeStack = controller.commandChangeStack
 

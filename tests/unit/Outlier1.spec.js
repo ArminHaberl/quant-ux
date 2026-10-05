@@ -33,8 +33,7 @@ test('Test Outlier.getZScore() > ', async () => {
         [4, 1, 6],
         [3, 9, 1]
     ]
-    const result = outlier.getZScore(m)
-
+    outlier.getZScore(m)
 })
 
 test('Test Outlier.getRankScore() > ', async () => {

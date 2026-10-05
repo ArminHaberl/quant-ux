@@ -1,6 +1,5 @@
 import * as outlier from '../../src/dash/Outlier'
 import outlierEvents3 from './data/outlierEvents3.json'
-import outlierEvents4 from './data/outlierEvents4.json'
 
 
 import DataFrame from '../../src/common/DataFrame'
