@@ -214,21 +214,34 @@ export default {
         if (widgetVarialbe === variable) {
           this._setDataBindingValue(value);
 
-          /**
-           * Since 4.0.41 we force a validation
-           * after the data set set! We do this with some delay,
-           * 
-           * FIXME: because the setDataBindign is called before 
-           * the animation hooks are regsitered we need a timeout
-           */
-          setTimeout(() => {
-            this.validate(value, true, true);
-          }, 10)
-      
+          if (this.shouldValidateOnDataBinding()) {
+            /**
+             * Since 4.0.41 we force a validation
+             * after the data set set! We do this with some delay,
+             * 
+             * FIXME: because the setDataBindign is called before 
+             * the animation hooks are regsitered we need a timeout
+             */
+            setTimeout(() => {
+              this.validate(value, true, true);
+            }, 10)
+          }
+
           return true;
         }
       }
       return false;
+    },
+
+    /**
+     * Whether a value that arrives through a data binding should be validated.
+     *
+     * A widget that writes to its own bound variable gets every interaction
+     * echoed back to it by updateAllDataBindings(), so it can override this to
+     * wait for a page navigation instead. See util/ValidationTrigger.
+     */
+    shouldValidateOnDataBinding () {
+      return true;
     },
 
     /**

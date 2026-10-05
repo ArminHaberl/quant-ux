@@ -9,6 +9,7 @@ import UIWidget from "core/widgets/UIWidget";
 //import {iconDOM} from 'page/QIconUtil'
 import DomBuilder from "common/DomBuilder";
 import { sanitizeObjectKey } from "common/SanitizeUtil";
+import { validatesOnChange } from "../../util/ValidationTrigger";
 import css from 'dojo/css'
 // import touch from "dojo/touch";
 // import on from "dojo/on";
@@ -464,6 +465,18 @@ export default {
 
     isValid (showError) {
       return this.validate(this.value, showError);
+    },
+
+    /**
+     * We write our own value to the bound variable in onChange(), which comes
+     * straight back at us via updateAllDataBindings() -> setDataBinding(). With
+     * the default "onChange" trigger that means every click validates, and the
+     * forced validation also latches validationActive, so the row errors show up
+     * long before the user tried to navigate. Widgets set to "onNavigate" skip
+     * that and are only checked by Simulator.canPerformTransition().
+     */
+    shouldValidateOnDataBinding () {
+      return validatesOnChange(this.model.props.validation);
     },
 
     emitValidationStateChange (value, isValid) {

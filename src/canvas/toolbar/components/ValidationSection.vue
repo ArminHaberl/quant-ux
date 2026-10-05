@@ -17,6 +17,7 @@ import ScrollContainer from 'common/ScrollContainer'
 import ToolbarDropDownButton from './ToolbarDropDownButton'
 import DataSection from './DataSection'
 import Validation from './Validation'
+import { TRIGGER_ON_CHANGE, TRIGGER_ON_NAVIGATE, getTrigger } from '../../../util/ValidationTrigger'
 import {iconDOM} from 'page/QIconUtil'
 
 export default {
@@ -285,6 +286,7 @@ export default {
 			this._renderDataBinding(model);
 			var validation = this.getValidationModel(model);
 			this._renderRequired(validation);
+			this._renderValidationTrigger(validation);
 			this._renderValidationLabels(validation, model);
 		},
 
@@ -674,6 +676,29 @@ export default {
 
 		},
 
+		_renderValidationTrigger (validation){
+
+			var row = this.db.div("MatcToobarRow").build(this.cntr);
+
+			var drpBox = this.$new(ToolbarDropDownButton, {maxLabelLength:20});
+			css.add(drpBox.domNode, "  MatcToolbarIconNoSmooth");
+			drpBox.reposition = true;
+			drpBox.setOptions([
+				{"value" : TRIGGER_ON_CHANGE, label:"On Value Change", icon:"mdi mdi-pencil"},
+				{"value" : TRIGGER_ON_NAVIGATE, label:"On Page Navigation", icon:"mdi mdi-arrow-right"},
+			]);
+			drpBox.setPopupCss("MatcActionAnimProperties");
+			drpBox.setValue(getTrigger(validation));
+			drpBox.placeAt(row);
+			this.tempOwn(on(drpBox, "change", lang.hitch(this, "setValidationTrigger")));
+			this.addTooltip(row, "Checks the validation and shows the error as soon as the value changes, " +
+				"or only once the user tries to go to the next page. A RadioTable writes to its own bound " +
+				"variable, so 'On Page Navigation' is usually what you want. Note that page navigation " +
+				"validation only runs if the transition has 'All fields valid' set.");
+			this._addChildWidget(drpBox);
+
+		},
+
 		getValidationModel (widget){
 			if(widget.props && widget.props.validation){
 				return widget.props.validation;
@@ -685,6 +710,13 @@ export default {
 			var val = this.getValidationModel(this.widget);
 			val = lang.clone(val);
 			val.required = value;
+			this.emit("propertyChange", "validation", val);
+		},
+
+		setValidationTrigger (value){
+			var val = this.getValidationModel(this.widget);
+			val = lang.clone(val);
+			val.trigger = value;
 			this.emit("propertyChange", "validation", val);
 		},
 
