@@ -54,6 +54,7 @@ import LockSlider from 'core/widgets/LockSlider'
 import Script from 'core/widgets/Script'
 import IconToggleButton from 'core/widgets/IconToggleButton'
 import IFrameWidget from 'core/widgets/IFrameWidget'
+import Video from 'core/widgets/Video'
 import ProgessSegments from 'core/widgets/ProgessSegments'
 import ImagePaging from 'core/widgets/ImagePaging'
 import LabeledRadioBox from 'core/widgets/LabeledRadioBox'
@@ -556,6 +557,12 @@ export default class RenderFactory extends Core {
 
 	_createIFrameWidget(parent, model) {
 		const widget = this.$new(IFrameWidget)
+		widget.placeAt(parent);
+		this._uiWidgets[model.id] = widget;
+	}
+
+	_createVideo(parent, model) {
+		const widget = this.$new(Video)
 		widget.placeAt(parent);
 		this._uiWidgets[model.id] = widget;
 	}

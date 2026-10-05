@@ -326,6 +326,48 @@
 }
 
 /*******************************
+ * Video
+ *******************************/
+/**
+ * The width/height 100% on the root is load bearing. CreateButton renders the
+ * real widget into the palette at roughly 120x70, so without it the tile
+ * collapses to zero height. Deliberately not nested under .MatcSimulator, so
+ * it also applies on the design canvas.
+ */
+.MatcWidgetTypeVideo {
+	position: absolute;
+	width:100%;
+	height: 100%;
+	overflow: hidden;
+	outline: none;
+}
+
+.MatcWidgetTypeVideoEl {
+	width:100%;
+	height: 100%;
+	display: block;
+	background: #000000;
+}
+
+.MatcWidgetTypeVideoEmpty {
+	width:100%;
+	height: 100%;
+	display: grid;
+	place-items: center;
+}
+
+/**
+ * The design canvas is interactive, so a live control bar would swallow the
+ * clicks that select and drag the widget. Video.vue only sets controls when
+ * mode !== "edit", so this is just the placeholder that shows instead.
+ */
+.MatcWidgetTypeVideoEmpty .mdi {
+	font-size: 240%;
+	color: #666666;
+	line-height: 1;
+}
+
+/*******************************
  * LockSlider
  *******************************/
 .MatcWidgetTypeLockSlider {

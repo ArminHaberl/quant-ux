@@ -1,0 +1,33 @@
+[
+    {
+        "id": "Video",
+        "type": "Video",
+        "category": "Advanced",
+        "subcategory": "XXXX",
+        "_type": "Widget",
+        "name": "Video",
+        "x": 0,
+        "y": 0,
+        "w": 320,
+        "h": 180,
+        "z": 0,
+        "props": {
+            "url": "",
+            "fit": "contain"
+        },
+        "has": {
+            "data": true,
+            "backgroundColor": true,
+            "border": true
+        },
+        "actions": {},
+        "style": {
+            "background": "#000000",
+
+            "borderRadius": 0,
+            "borderWidth": 0,
+            "borderStyle": "solid",
+            "borderColor": "#333333"
+        }
+    }
+]

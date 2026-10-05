@@ -236,7 +236,13 @@ export default {
 		_showIFrameWidget(model) {
 			this._setSectionLabel("IFrame");
 			this._renderInput(model.props, "url", "The URL to link", "https://yourlink.com");
-			
+
+		},
+
+		_showVideo(model) {
+			this._setSectionLabel("Video");
+			this._renderInput(model.props, "url", "The URL of the video. Absolute or relative to this host.", "https://your.host/clip.mp4");
+			this._renderInputDropDown("Aspect Fit", model, ['contain', 'cover'], "fit", true);
 		},
 
 		_showScreenSegment  (widget) {
