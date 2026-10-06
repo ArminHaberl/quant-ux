@@ -5,6 +5,8 @@
 <script>
 import ScriptEngine from '../../core/engines/ScriptEngine'
 import * as ScriptToModel from '../../core/engines/ScriptToModel'
+import * as ScriptAnimations from '../../core/engines/ScriptAnimations'
+import Animation from '../../core/Animation'
 import lang from 'dojo/_base/lang'
 
 export default {
@@ -233,8 +235,19 @@ export default {
     renderAppChanges (result) {
         this.logger.log(2,"renderAppChanges","enter >", result.appDeltas);
         if (result.appDeltas) {
+            /**
+             * Animations are not model merges and cannot be applied in this
+             * pass. Every delta here is applied in one synchronous frame, so a
+             * stepped fade would collapse to its last value. They go to the
+             * animation engine instead, on the main thread, where the DOM is.
+             */
+            const animationFactory = new Animation();
             result.appDeltas.forEach(change => {
-                ScriptToModel.applyChange(this.model, change, this.renderFactory)
+                if (ScriptAnimations.isScriptAnimation(change)) {
+                    ScriptAnimations.applyScriptAnimation(this.model, this.renderFactory, animationFactory, change);
+                } else {
+                    ScriptToModel.applyChange(this.model, change, this.renderFactory)
+                }
             });
         }
     },

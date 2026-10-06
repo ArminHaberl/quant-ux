@@ -305,7 +305,109 @@ let toggleScreen = qux.getScreen('ToggleScreen')
 let group = toggleScreen.getGroup('ToggleGroup')
 group.toggle()           
                 </pre>
+
+                <b>hide()</b>, <b>show()</b> and <b>toggle()</b> work on a group as well as on a
+                single widget. They act on every element of the group at once, and
+                <b>toggle()</b> only shows the group again once all of its elements are hidden.
+
+                <p class="MatcHelpCallout">
+                    Only fades are available as an animation, on both widgets and groups.
+                </p>
                   
+                `
+            },
+
+            {
+                "id": "script.animate",
+                "title": "Animated Visibility",
+                "body": `
+
+                Changing the visibility is instant. With the <b>animate()</b> method you can
+                fade it instead, which reads much better for something that appears in
+                answer to a question.
+
+                <pre class="MatcHelpCode">
+let screen = qux.getScreen('Screen')
+let widget = screen.getWidget('Answer')
+widget.animate('fadeIn', {duration: 300})
+                </pre>
+
+                <b>animate('fadeIn')</b> makes the element visible, <b>animate('fadeOut')</b>
+                hides it again, so the two are the slow versions of <b>show()</b> and
+                <b>hide()</b>. The <b>duration</b> is optional and is given in milliseconds.
+
+                Groups take the same two fades, applied to all of their elements at once:
+
+                <pre class="MatcHelpCode">
+let group = qux.getScreen('Screen').getGroup('Reply')
+group.animate('fadeIn')
+                </pre>
+
+                Groups also have a third animation, <b>reveal</b>, which fades the elements
+                in one after another. It is the one to use when you want something to appear
+                piece by piece. To have text typed out instead, see Typewriter.
+
+                <pre class="MatcHelpCode">
+let group = qux.getScreen('Screen').getGroup('Reply')
+group.animate('reveal', {duration: 300, step: 80})
+                </pre>
+
+                <b>step</b> is the pause between two elements, so the group above finishes
+                revealing after about a quarter of a second. Both options are optional.
+
+                <p class="MatcHelpCallout">
+                    The reveal fades in one element at a time. It reveals the elements of the
+                    group rather than the letters inside them, and every run looks the same.
+                </p>
+
+                <p class="MatcHelpCallout">
+                    Both options exist so you can trigger something from a script. The label
+                    does not have to be an "Animated Label" for a typewriter to work on it.
+                </p>
+
+                Two things worth knowing. Only the elements of the screen that is currently
+                shown can be animated, because that is all the simulator keeps in memory;
+                for an element on another screen the change happens instantly instead. And a
+                group that contains another group cannot be reached from a script at all.
+
+                `
+            },
+
+            {
+                "id": "script.typewriter",
+                "title": "Typewriter",
+                "body": `
+
+                If you want something to look as if it is being typed out, use
+                <b>animate('typewriter')</b>. On a label it types the text one character at a
+                time. On anything else it falls back to a fade in, so you can use it on a
+                whole group and let the labels type while the rest fade in.
+
+                <pre class="MatcHelpCode">
+let group = qux.getScreen('Screen').getGroup('Reply')
+group.animate('typewriter', {duration: 2000, step: 150})
+                </pre>
+
+                The text it types is whatever the label is currently showing. If the label is
+                bound to a data variable, it types that variable.
+
+                <b>duration</b> is how long the whole thing takes. The labels take that long
+                to type and the other elements take that long to fade in, so one number
+                covers both.
+
+                <p class="MatcHelpCallout">
+                    Leave <b>duration</b> out and each label types at the speed set in its own
+                    Animated settings instead.
+                </p>
+
+                <p class="MatcHelpCallout">
+                    The typing is counted in frames, so on a screen that redraws twice as
+                    often the text appears twice as fast.
+                </p>
+
+                The label has to be a plain label. Labels inside a text box, a check box or a
+                toggle are part of a control and are not typed.
+
                 `
             },
 

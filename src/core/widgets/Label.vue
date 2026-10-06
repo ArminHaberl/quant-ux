@@ -7,6 +7,7 @@ import DojoWidget from "dojo/DojoWidget";
 import lang from "dojo/_base/lang";
 import css from "dojo/css";
 import UIWidget from "core/widgets/UIWidget";
+import { buildChatSteps } from "core/widgets/LabelAnimationUtil";
 
 export default {
   name: "Label",
@@ -113,9 +114,9 @@ export default {
           console.warn('Label._setDataBindingValue() Cannot convert JSON', v)
         }
       }
-      this.animIsRunning = false
+      this.stopChatAnimation()
       if (this.isAnimated() && this.isChatAnimation()) {
-        this.startChatAnimation(v, this.animDuration, false)
+        this.startChatAnimation(v, this.animDuration)
         return
       }
       if (this.isAnimated() && !isNaN(v)) {
@@ -155,26 +156,71 @@ export default {
       }
     },
 
-    startChatAnimation (txt, animDuration) {
-      //console.debug('Label.startChatAnimation() > enter', txt, animDuration, repeat)
-      let durationPerChar = 1 / (animDuration * 3);
-      const length = txt.length
-      const frames = Math.round(durationPerChar * length * 30)
-      const framesPerChar = frames / length
-      clearTimeout(this.animationRepeat)
+    startChatAnimation (txt, animDuration, delay) {
+        const text = txt != null ? String(txt) : ''
+        if (text.length === 0) {
+            this.stopChatAnimation();
+            return;
+        }
 
-      this.animSteps = []
-      for (let i = 0; i < frames; i++) {
-        const end = Math.floor(i / framesPerChar)
-        this.animSteps.push(txt.slice(0, end))
-      }
-      this.animSteps.push(txt)
+        /**
+         * A second trigger has to replace the first, not join it. Both loops
+         * shift from this same array, so leaving the old one running would
+         * consume the steps twice as fast and finish in half the time. The
+         * clearTimeout that used to be here was clearing a handle that was
+         * never assigned, so it did nothing.
+         */
+        this.stopChatAnimation();
 
-      this.animIsRunning = true
-      this.runLabelAnimation("", txt)     
+        this.animSteps = buildChatSteps(text, animDuration);
+        this.animIsRunning = true;
+
+        /**
+         * Blank it now, not on the first frame. With a stagger the first frame
+         * is `delay` ms away, and until it arrives the label would sit there
+         * showing the whole text and then empty out and type it again, which
+         * reads as a flash. The first step is already "", so this only moves
+         * the same write earlier rather than adding one.
+         *
+         * The contract from here on is that the label reads as empty. That also
+         * covers a re-trigger, since stopChatAnimation() leaves whatever was on
+         * screen until the next frame replaces it.
+         *
+         * setInnerHTML and not setValue, because setValue would also reassign
+         * this.value and the loop below never touches it: getValue() keeps
+         * returning the whole text for as long as the typewriter runs.
+         */
+        this.setInnerHTML(this.domNode, '');
+
+        if (delay > 0) {
+            this._chatStartTimeout = setTimeout(() => {
+                this._chatStartTimeout = null;
+                this.runLabelAnimation("", text)
+            }, delay);
+        } else {
+            this.runLabelAnimation("", text);
+        }
+    },
+
+    stopChatAnimation () {
+        this.animIsRunning = false
+        this.animSteps = []
+        if (this._chatRAF) {
+            cancelAnimationFrame(this._chatRAF);
+            this._chatRAF = null;
+        }
+        if (this._chatStartTimeout) {
+            clearTimeout(this._chatStartTimeout);
+            this._chatStartTimeout = null;
+        }
     },
 
     startNumberAnimation (to) {
+      /**
+       * Shares animSteps and animIsRunning with the chat path, so a typewriter
+       * still running would have its steps eaten by this loop.
+       */
+      this.stopChatAnimation();
       const label = this.getLabelValue()
       const diff = to - this.animCurrent
       const frames = (this.animDuration * 30)
@@ -193,18 +239,27 @@ export default {
     },
 
     runLabelAnimation (label, to, callback) {
-        if (!this.animIsRunning) {
+        if (!this.animIsRunning || this._isDestroyed) {
           this.animCurrent = to
           return
         }
         if (this.animSteps.length > 0) {
           let value = this.animSteps.shift()
           value = this.replaceVaribale(label, value)
-          this.setTextContent(this.domNode, value + "");
-          requestAnimationFrame(() => {
+          /**
+           * setInnerHTML, not setTextContent. setTextContent turns a newline
+           * into the string "<br>" and then assigns it with textContent, which
+           * does not parse HTML, so a multi line text came out as literal "<br>"
+           * wherever a line break should have been. setValue() already uses
+           * setInnerHTML for the same text on the same node, so this also makes
+           * the static and the typed paths agree.
+           */
+          this.setInnerHTML(this.domNode, value);
+          this._chatRAF = requestAnimationFrame(() => {
               this.runLabelAnimation(label, to, callback)
           })
         } else {
+          this._chatRAF = null
           this.animCurrent = to
           if (callback) {
             callback()
@@ -268,11 +323,11 @@ export default {
       this.emitClick(e);
     },
 
-    beforeDestroy () {
-      this._isDestroyed = true
-      this.animIsRunning = false
-      clearTimeout(this.animationRepeat)
+beforeDestroy () {
+        this._isDestroyed = true
+        this.stopChatAnimation()
     }
+
 
   
    
