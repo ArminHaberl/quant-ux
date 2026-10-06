@@ -27,14 +27,13 @@ var _openVommondDropDownButton = null;
 export default {
   name: "DropDownButton",
   mixins: [DojoWidget],
-  props: ["l", "options", "value"],
+  props: ["l", "options", "value", "maxLabelLength"],
   data: function () {
     return {
       icon: '',
       selected: false,
       hasObjects: false,
       updateLabel: true,
-      maxLabelLength: -1,
       openCSS: "VommondDropDownButtonOpen",
       iconCSS: "VommondDropDownIcon",
       labelCSS: "VommondDropDownLabel",

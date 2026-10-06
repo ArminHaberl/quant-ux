@@ -28,8 +28,10 @@ five root configs are baked in (`Dockerfile:66-73`). So:
 - A test that needs a new root-level config file needs it added to that
   stage's `COPY` or it will silently be missing inside the container.
 
-Green baseline: **69 suites / 256 tests**, lint 0. Report those numbers in
-commit messages. Slow suites: `tSNE`, `Outlier*`, `Analytics`.
+Green baseline: **71 suites / 359 tests**, lint 0. Report those numbers in
+commit messages. These go stale as suites land — if `make test` disagrees,
+the doc is the wrong half; `git stash -u && make test` gives the real
+baseline. Slow suites: `tSNE`, `Outlier*`, `Analytics`.
 
 ## Testing
 
@@ -85,6 +87,20 @@ mixins; `src/dojo/` is a vendored dojo subset (`dojo/on`, `dojo/topic`,
 - `Core.createInheritedModel` (`src/core/Core.js:704`) deep-clones master
   screens and mints inherited ids `<parentId>@<screenId>`. It self-guards on
   `model.inherited`; keep both guards.
+- **Rule dialog:** the decisions live in `src/canvas/toolbar/RuleModel.js` as
+  plain functions; `src/canvas/toolbar/components/Rule.vue` is only the
+  renderer. A `.vue` file cannot be imported by a spec, so anything worth
+  testing has to sit outside it — keep it that way when editing. Every rule
+  mutation is an `apply*` transition there that mutates the rule and returns
+  the rows it invalidated, resolved from `ROW_DEPENDENCIES` by
+  `getDirtyRows()`; the setters in `Rule.vue` only hand off to `_apply()` and
+  must never name a row themselves. That is what stops a row being silently
+  left stale — the operator row depends on `databinding` because
+  `getRuleOperators()` returns null until a variable exists, which is easy to
+  forget and impossible to see from the component. Beware that
+  `ActionButton.vue` mixes `Rule` in wholesale, so every `Rule` method is also
+  on `ActionButton`, where `postCreate()` has been overridden and never
+  initialises `Rule`'s state. Methods reached that way must tolerate that.
 - **Rendering is live DOM**, not HTML strings. `RenderFactory` dispatches by
   method name: `_create<Type>` creates a type, `_set_<cssProp>` applies one
   style property.
@@ -129,7 +145,7 @@ empty div.
   imports and variables are still errors.
 - Commit subjects follow conventional commits. The body is the house style:
   the defect in past tense, the mechanism, the files touched, then the
-  verification line (`Tests: 69/69 suites, 256/256 pass`, `Lint: 0`). Read
+  verification line (`Tests: 71/71 suites, 359/359 pass`, `Lint: 0`). Read
   `git log -1 --format=%B` before writing one. The `package.json` version is
   deliberately never bumped.
 

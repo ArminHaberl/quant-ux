@@ -16,6 +16,7 @@ import CheckBox from 'common/CheckBox'
 import Dialog from 'common/Dialog'
 import ToolbarDropDownButton from './ToolbarDropDownButton'
 import Rule from './Rule'
+import * as RuleModel from '../RuleModel'
 import ActionSettings from './ActionSettings'
 import WorkflowSettings from './WorkflowSettings'
 import Util from 'core/Util'
@@ -770,84 +771,7 @@ export default {
 
 
 		getRuleLabel(rule) {
-
-			var lbl = "???";
-			var widget = this.model.widgets[rule.widget];
-			if (widget) {
-				lbl = widget.name + " ";
-			} else {
-				if (rule.databinding) {
-					lbl = '${' + rule.databinding + '}'
-				} else {
-					if (rule.restResponseStatus === '200') {
-						lbl = 'Request OK'
-					}
-					if (rule.restResponseStatus === '4xx') {
-						lbl = 'Request ERROR'
-					}
-				}
-			}
-
-
-			switch (rule.operator) {
-				case "isValid":
-					lbl += " is valid";
-					break;
-
-				case "checked":
-					lbl += " == checked";
-					break;
-
-				case "notchecked":
-					lbl += " != checked";
-					break;
-
-				case "active":
-					lbl += " == active";
-					break;
-
-				case "notactive":
-					lbl += " != active";
-					break;
-
-				case "contains":
-					lbl += " ~ ";
-					break;
-
-				case "==":
-					lbl += " == ";
-					break;
-
-				case "!=":
-					lbl += " != ";
-					break;
-
-				case ">":
-					lbl += " &gt; ";
-					break;
-
-				case "<":
-					lbl += " &lt; ";
-					break;
-
-				case ">=":
-					lbl += " &gt;= ";
-					break;
-
-				case "<=":
-					lbl += " &lt;= ";
-					break;
-
-				default:
-					console.warn("getRuleLabel() > not supported operator", rule.operator)
-			}
-
-			if (rule.value) {
-				lbl += rule.value;
-			}
-
-
-			return lbl;
+			return RuleModel.getRuleLabel(rule, this.model.widgets);
 		},
 
 		onEditRule(line, e) {
@@ -873,10 +797,31 @@ export default {
 
 				var d = new Dialog({ overflow: true });
 
+				/**
+				 * The dialog measures itself once, when it opens. The rule grows as
+				 * it is filled in, so keep the card around the content.
+				 */
+				d.own(on(rule, "resize", function () {
+					d.resize(d.node);
+				}));
+
+				/**
+				 * Wait for the entry animation before touching the focus, or the
+				 * field grabs it back while the dialog is still moving.
+				 */
+				d.onOpen(function () {
+					d.resize(d.node);
+					rule.focusDataBinding();
+				});
+
 				d.own(on(write, touch.press, lang.hitch(this, "setRule", d, rule, line)));
 				d.own(on(cancel, touch.press, lang.hitch(d, "close")));
 				d.own(on(d, "close", function () {
-					rule.destroy();
+					/**
+					 * $destroy, not destroy: only the former runs the rows' beforeDestroy,
+					 * which is what releases the widgets and listeners Rule built.
+					 */
+					rule.$destroy();
 				}));
 				d.popup(popup, this.domNode);
 			} catch (e) {
@@ -921,8 +866,10 @@ export default {
 				}
 			} else {
 				/**
-				 * FIXME: Show warning message??
+				 * A saved rule can be half filled in, and a variable name is free
+				 * text, so say what is missing instead of only shaking.
 				 */
+				ruleWidget.showError(ruleWidget.getErrorMessage());
 				d.shake();
 			}
 		}

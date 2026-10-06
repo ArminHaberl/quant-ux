@@ -1,4 +1,3 @@
-
 <template>
      <div class="MatcRule"></div>
 </template>
@@ -13,6 +12,9 @@ import DropDownButton from 'page/DropDownButton'
 import Input from 'common/Input'
 import SegmentButton from 'page/SegmentButton'
 import Layout from 'core/Layout'
+import * as RuleModel from '../RuleModel'
+
+const ROWS = RuleModel.ROWS.concat(["error"])
 
 export default {
     name: 'Rule',
@@ -20,30 +22,11 @@ export default {
 	props: ['l', 'app'],
     data: function () {
         return {
-            widgetOutputTypes: {
-				"ToggleButton" : "active",
-				"SegmentButton" : "options",
-				"SegmentPicker" : "options",
-				"DropDown" : "options",
-				"MobileDropDown" : "options",
-				"TextBox" : "string",
-				"TextArea" : "string",
-				"Password" : "string",
-				"CheckBox" : "checked",
-				"RadioBox" : "checked",
-				"RadioBox2" : "checked",
-				"IconToggleButton": "checked",
-				"VisualPicker": "checked",
-				"HSlider" : "int",
-				"CountingStepper": "int",
-				"Spinner" : "options",
-				"Switch" : "active",
-				"DragNDrop" : "pos",
-				"Date" : "date",
-				"DateDropDown" : "date",
-				"RadioGroup": "options",
-				"CheckBoxGroup": "options"
-			}
+            /**
+             * Copied, not referenced: Vue would walk a shared module object and
+             * leave it reactive for every other importer.
+             */
+            widgetOutputTypes: Object.assign({}, RuleModel.WIDGET_OUTPUT_TYPES)
         }
     },
     components: {},
@@ -51,17 +34,11 @@ export default {
         postCreate (){
 			this.logger = new Logger("Rule");
 			this.db = new DomBuilder();
+			this._rows = {};
 		},
 
 		setModel (model){
 			this.model = model;
-		},
-
-		getValidationModel (widget){
-			if(widget.props && widget.props.validation){
-				return widget.props.validation;
-			}
-			return {};
 		},
 
 		setScreenIDs (ids){
@@ -86,438 +63,476 @@ export default {
 			if (!this.value.type) {
 				this.value.type = 'widget'
 			}
-			this.render(this.value);
+			this._renderAll();
 		},
 
 		getValue (){
 			return this.value;
 		},
 
+		_ruleWidget (){
+			if (this.value && this.value.widget) {
+				return this.model.widgets[this.value.widget];
+			}
+			return null;
+		},
+
 		isValid (){
-			if (this.value.type === 'widget') {
-				return this.value.widget!=null && this.value.operator !=null;
-			}
-			if (this.value.type === 'databinding') {
-				return this.value.databinding !=null && this.value.operator !=null;
-			}
-			return true
+			return RuleModel.isRuleValid(this.value, this._ruleWidget());
 		},
 
-		render (rule){
-			this.domNode.innerHTML="";
-			this.cleanUpTempListener();
-			this.renderType(rule);
-			this.renderDataBinding(rule);
-			this.renderRest(rule);
-			this.renderWidget(rule);
-			this.renderOperator(rule);
-			this.renderValue(rule);
+		getErrorMessage (){
+			return RuleModel.getRuleError(this.value, this._ruleWidget());
 		},
 
-		renderType (rule) {
-			var row = this.db.div("form-group").build(this.domNode);
-			this.db.label(null,"Rule Type").build(row);
-			var drpBox = this.$new(SegmentButton, {maxLabelLength:25});
-			drpBox.setOptions(this.getTypeOption());
-			drpBox.setValue(rule.type)
-			drpBox.placeAt(row);
-			this.tempOwn(on(drpBox, "change", lang.hitch(this, "setType")));
-		},
-
-		renderDataBinding (rule) {
-			if (rule.type == 'databinding') {
-				var row = this.db.div("form-group").build(this.domNode);
-
-				let variables = this.getAllAppVariables()
-				let hints = this.getHintsAppVariables()
-
-				let options = variables.concat(hints).map(v => {
-					return {value: v, label: v}
-				})
-				this.db.label(null,"Databinding Variable").build(row);
-				let input = this.$new(Input, {
-					fireOnBlur: true,
-					placeholder: "Select Variable",
-					formControl: true,
-					isDropDown: true
-				})
-				input.placeAt(row)
-				input.setValue(rule.databinding)
-				input.setHints(options);
-				this.tempOwn(on(input, "change", lang.hitch(this, "setDataBinding")));
-				setTimeout(() => input.focus(), 100)
-			}
-		},
-
-		renderRest (rule) {
-			if (rule.type == 'rest') {
-				var row = this.db.div("form-group").build(this.domNode);
-				this.db.label(null,"Response Type").build(row);
-				var drpBox = this.$new(SegmentButton, {maxLabelLength:25});
-				drpBox.setOptions([
-					{value: "200", label: "OK"},
-					{value: "4xx", label: "Error"},
-				]);
-				drpBox.setValue(rule.restResponseStatus)
-				drpBox.placeAt(row);
-				this.tempOwn(on(drpBox, "change", lang.hitch(this, "setRest")));
-			}
-		},
-
-
-
-		renderWidget (rule){
-			if (rule.type == 'widget') {
-				var row = this.db.div("form-group").build(this.domNode);
-				this.db.label(null,"Widget").build(row);
-				var drpBox = this.$new(DropDownButton, {maxLabelLength:25});
-				drpBox.setOptions(this.getUIWidgets());
-				drpBox.setValue(rule.widget)
-				drpBox.placeAt(row);
-				this.tempOwn(on(drpBox, "change", lang.hitch(this, "setWidget")));
-			}
-		},
-
-		renderOperator (rule){
-			if(rule.widget){
-				var widget = this.model.widgets[rule.widget];
-				if(widget){
-					let row = this.db.div("form-group").build(this.domNode);
-					this.db.label(null,"Operator").build(row);
-					let drpBox = this.$new(DropDownButton, {maxLabelLength:25});
-					drpBox.setOptions(this.getOperators(widget));
-					drpBox.setValue(rule.operator)
-					drpBox.placeAt(row);
-					this.tempOwn(on(drpBox, "change", lang.hitch(this, "setOperator")));
-				} else {
-					console.warn("renderOperator() > No widget with id",rule.widget );
-				}
+		/**
+		 * A rule is only half filled in while it is being edited, and a variable
+		 * name is free text, so the caller gets somewhere to say what is missing.
+		 */
+		showError (message){
+			this._clearRow("error");
+			if (!message) {
 				return;
+			}
+			const row = this._rows.error.node;
+			const group = this.db.div("form-group").build(row);
+			this.db.span("VommondFormErrorLabel", message).build(group);
+		},
+
+		/**********************************************************
+		 * Rows
+		 *
+		 * Every row owns its node, its dojo widgets and its listeners so a
+		 * change to one row can be rendered without touching the others. The
+		 * dialog used to wipe domNode and rebuild all of them from every
+		 * setter, which threw the child widgets away without destroying them
+		 * (Input leaks the win.body() listener it adds when the suggestion list
+		 * opens, and only Input.destroy() takes it off again) and re-armed the
+		 * databinding focus timer on every interaction.
+		 **********************************************************/
+		_renderAll (){
+			/**
+			 * The first build, out of setValue(). Everything after it goes through
+			 * _apply(). Rendering every row into the existing containers would
+			 * produce the same DOM, since each renderer clears its own row first.
+			 */
+			this._clearAllRows();
+			this.domNode.innerHTML = "";
+			for (let i = 0; i < ROWS.length; i++) {
+				this._rows[ROWS[i]] = {
+					node: this.db.div("MatcRuleRow").build(this.domNode),
+					widgets: [],
+					listeners: []
+				};
+			}
+			this._renderRows(RuleModel.ROWS);
+			this._notifyResize();
+		},
+
+		_clearAllRows (){
+			/**
+			 * ActionButton mixes this component in for getRuleLabel and friends,
+			 * so its methods exist without postCreate() ever having run.
+			 */
+			if (!this._rows) {
+				return;
+			}
+			for (let i = 0; i < ROWS.length; i++) {
+				this._clearRow(ROWS[i]);
+			}
+			this._rows = {};
+		},
+
+		_clearRow (name){
+			const row = this._rows[name];
+			if (!row) {
+				return;
+			}
+			for (let i = 0; i < row.widgets.length; i++) {
+				this._destroyWidget(row.widgets[i]);
+			}
+			for (let i = 0; i < row.listeners.length; i++) {
+				try {
+					row.listeners[i].remove();
+				} catch (e) {
+					console.error("Rule._clearRow() > ", name, e);
+				}
+			}
+			row.widgets = [];
+			row.listeners = [];
+			row.node.innerHTML = "";
+		},
+
+		_destroyWidget (widget){
+			try {
+				/**
+				 * $destroy runs beforeDestroy, which is where both the dojo
+				 * listeners and Input.hideSuggestion() are released.
+				 */
+				if (widget && typeof widget.$destroy === "function") {
+					widget.$destroy();
+				} else if (widget && typeof widget.destroy === "function") {
+					widget.destroy();
+				}
+			} catch (e) {
+				console.error("Rule._destroyWidget() > ", e);
+			}
+		},
+
+		_addWidget (name, widget){
+			this._rows[name].widgets.push(widget);
+			return widget;
+		},
+
+		_addListener (name, target, event, callback){
+			const listener = on(target, event, callback);
+			this._rows[name].listeners.push(listener);
+			return listener;
+		},
+
+		/**********************************************************
+		 * Turning a rule change into DOM work
+		 *
+		 * _apply() is the only thing here that re-renders. It renders exactly
+		 * the rows the transition reported as invalid, and a transition in
+		 * RuleModel decides that. So a setter cannot leave a row behind: it does
+		 * not name rows at all. Rendering a row the user is currently pressing is
+		 * what made an operator selection look lost, so the dependencies are
+		 * deliberately one directional — see ROW_DEPENDENCIES in RuleModel.
+		 **********************************************************/
+		_apply (transition, value){
+			const rows = transition(this.value, value);
+			if (!rows) {
+				/**
+				 * Nothing changed. Both the DropDown and the SegmentButton emit on
+				 * every press, and re-rendering on a no-op is what threw a chosen
+				 * operator away.
+				 */
+				return false;
+			}
+			this._renderRows(rows);
+			if (rows.length > 0) {
+				this._notifyResize();
+			}
+			this._onChange();
+			return true;
+		},
+
+		_renderRows (rows){
+			for (let i = 0; i < rows.length; i++) {
+				const row = this._rows[rows[i]];
+				const render = RuleModel.ROW_RENDERERS[rows[i]];
+				if (row && render) {
+					this[render]();
+				}
+			}
+		},
+
+		_notifyResize (){
+			/**
+			 * The dialog measures itself once when it opens. The rule grows as
+			 * it is filled in, so ActionButton keeps Dialog.resize() in sync
+			 * from here. Nothing to measure while we are not in the document
+			 * yet, which is the case until placeAt() has run.
+			 */
+			this.$nextTick(() => {
+				if (!this.domNode || !document.body.contains(this.domNode)) {
+					return;
+				}
+				this.emit("resize", this.domNode);
+			});
+		},
+
+		beforeDestroy (){
+			this._clearAllRows();
+		},
+
+		/**********************************************************
+		 * Renderers
+		 **********************************************************/
+		renderType (){
+			this._clearRow("type");
+			const row = this._rows.type.node;
+			const group = this.db.div("form-group").build(row);
+			this.db.label(null,"Rule Type").build(group);
+			const drpBox = this.$new(SegmentButton, {maxLabelLength:25});
+			drpBox.setOptions(this.getTypeOption());
+			drpBox.setValue(this.value.type);
+			drpBox.placeAt(group);
+			this._addWidget("type", drpBox);
+			this._addListener("type", drpBox, "change", lang.hitch(this, "setType"));
+		},
+
+		renderDataBinding () {
+			const rule = this.value;
+			this._clearRow("databinding");
+			this._dataBindingInput = null;
+			if (rule.type !== 'databinding') {
+				return;
+			}
+			const row = this._rows.databinding.node;
+			const group = this.db.div("form-group").build(row);
+			this.db.label(null,"Databinding Variable").build(group);
+
+			/**
+			 * Rules resolve a path against the data binding store, not the value
+			 * of a widget's props.databinding map, so the picker offers paths.
+			 * The union used to come from two lists that were concatenated
+			 * without de-duplicating, which repeated a path once per widget
+			 * producing it.
+			 */
+			const options = RuleModel.getAppVariablePaths(this.model).map(v => {
+				return {value: v, label: v}
+			});
+
+			const input = this.$new(Input, {
+				fireOnBlur: true,
+				/**
+				 * Otherwise the list opens downwards, on top of the operator and
+				 * value rows right underneath it.
+				 */
+				top: true,
+				placeholder: "Select Variable",
+				formControl: true,
+				isDropDown: true
+			});
+			input.placeAt(group);
+			input.setValue(rule.databinding);
+			input.setHints(options);
+			this._addWidget("databinding", input);
+			this._addListener("databinding", input, "change", lang.hitch(this, "setDataBinding"));
+			this._dataBindingInput = input;
+		},
+
+		renderRest () {
+			const rule = this.value;
+			this._clearRow("rest");
+			if (rule.type !== 'rest') {
+				return;
+			}
+			const row = this._rows.rest.node;
+			const group = this.db.div("form-group").build(row);
+			this.db.label(null,"Response Type").build(group);
+			const drpBox = this.$new(SegmentButton, {maxLabelLength:25});
+			drpBox.setOptions([
+				{value: "200", label: "OK"},
+				{value: "4xx", label: "Error"},
+			]);
+			drpBox.setValue(rule.restResponseStatus);
+			drpBox.placeAt(group);
+			this._addWidget("rest", drpBox);
+			this._addListener("rest", drpBox, "change", lang.hitch(this, "setRest"));
+		},
+
+		renderWidget (){
+			const rule = this.value;
+			this._clearRow("widget");
+			if (rule.type !== 'widget') {
+				return;
+			}
+			const row = this._rows.widget.node;
+			const group = this.db.div("form-group").build(row);
+			this.db.label(null,"Widget").build(group);
+			const drpBox = this.$new(DropDownButton, {maxLabelLength:25});
+			drpBox.setOptions(this.getUIWidgets());
+			drpBox.setValue(rule.widget);
+			drpBox.placeAt(group);
+			this._addWidget("widget", drpBox);
+			this._addListener("widget", drpBox, "change", lang.hitch(this, "setWidget"));
+		},
+
+		getRuleOperators (){
+			const rule = this.value;
+			if (rule.widget){
+				const widget = this.model.widgets[rule.widget];
+				if (!widget){
+					console.warn("renderOperator() > No widget with id",rule.widget );
+					return null;
+				}
+				const operators = RuleModel.getOperators(widget);
+				if (operators.length === 0) {
+					return null;
+				}
+				return operators;
 			}
 			if (rule.type === 'databinding' && rule.databinding) {
-				let row = this.db.div("form-group").build(this.domNode);
-				this.db.label(null,"Operator").build(row);
-				let drpBox = this.$new(DropDownButton, {maxLabelLength:25});
-				drpBox.setOptions([
-					{"value" : "==", label:"Equals (==)"},
-			    	{"value" : "!=", label:"Not Equals (!=)"},
-			    	{"value" : ">", label:"Bigger (>)"},
-					{"value" : "<", label:"Smaller (<)"},
-				  	{"value" : ">=", label:"Bigger Equals (>=)"},
-					{"value" : "<=", label:"Smaller Equals(<=)"}
-				]);
-				drpBox.setValue(rule.operator)
-				drpBox.placeAt(row);
-				this.tempOwn(on(drpBox, "change", lang.hitch(this, "setOperator")));
-				return;
+				return RuleModel.getDatabindingOperators();
 			}
+			return null;
 		},
 
-		renderValue (rule){
-			if (rule.widget && rule.operator && rule.operator != "isValid") {
-				let widget = this.model.widgets[rule.widget];
-				if (widget) {
-					let row = this.db.div("form-group").build(this.domNode);
-					let type = this.widgetOutputTypes[widget.type];
-					if (this["renderValue_" +type]) {
-						this["renderValue_" +type](row, widget, rule);
+		renderOperator (){
+			const rule = this.value;
+			this._clearRow("operator");
+			const operators = this.getRuleOperators();
+			if (!operators) {
+				return;
+			}
+			const row = this._rows.operator.node;
+			const group = this.db.div("form-group").build(row);
+			this.db.label(null,"Operator").build(group);
+			const drpBox = this.$new(DropDownButton, {maxLabelLength:25});
+			drpBox.setOptions(operators);
+			drpBox.setValue(rule.operator);
+			drpBox.placeAt(group);
+			this._addWidget("operator", drpBox);
+			this._addListener("operator", drpBox, "change", lang.hitch(this, "setOperator"));
+		},
 
-						let rowCheckBox = this.db.div("form-group").build(this.domNode);
-						this.renderValue_isBinding(rowCheckBox, rule)
-					}
-				} else {
+		renderValue (){
+			const rule = this.value;
+			this._clearRow("value");
+			const row = this._rows.value.node;
+			if (rule.widget && rule.operator && rule.operator !== "isValid") {
+				const widget = this.model.widgets[rule.widget];
+				if (!widget) {
 					console.debug("renderValue() > No widget with id", rule.widget);
+					return;
+				}
+				const type = RuleModel.getOutputType(widget);
+				if (this["renderValue_" + type]) {
+					this["renderValue_" + type](row, widget, rule);
+					this.renderValue_isBinding(this.db.div("form-group").build(row));
 				}
 			} else if (rule.databinding && rule.operator) {
-				let row = this.db.div("form-group").build(this.domNode);
-				let text = this.db.formGroup("MatcIgnoreOnKeyPress", "Value", rule.value, "").build(row);
-				this.tempOwn(on(text, "keyup", lang.hitch(this, "setRuleValueText", text)));
-
-				let rowCheckBox = this.db.div("form-group").build(this.domNode);
-				this.renderValue_isBinding(rowCheckBox, rule)
+				this._renderValueInput(row, rule, null);
+				this.renderValue_isBinding(this.db.div("form-group").build(row));
 			}
 		},
 
 		renderValue_options (row, widget, rule){
-			this.db.label(null,"Value").build(row);
-			var drpBox = this.$new(DropDownButton,{maxLabelLength:25});
-			drpBox.setOptions(this.getOptions(widget));
-			drpBox.setValue(rule.value)
-			drpBox.placeAt(row);
-			this.tempOwn(on(drpBox, "change", lang.hitch(this, "setRuleValue")));
+			const group = this.db.div("form-group").build(row);
+			this.db.label(null,"Value").build(group);
+			const drpBox = this.$new(DropDownButton, {maxLabelLength:25});
+			drpBox.setOptions(RuleModel.getOptions(widget));
+			drpBox.setValue(rule.value);
+			drpBox.placeAt(group);
+			this._addWidget("value", drpBox);
+			this._addListener("value", drpBox, "change", lang.hitch(this, "setRuleValue"));
 		},
 
 		renderValue_string (row, widget, rule){
-
-			if(widget.props && widget.props.validation){
-				var val = widget.props.validation;
-				var valType = val.type;
-				switch(valType){
-					case "int":	{
-						let number = this.db.formGroup("MatcIgnoreOnKeyPress", "Value", rule.value, "").build(this.domNode);
-						this.tempOwn(on(number, "keyup", lang.hitch(this, "setRuleValueNumber", number, "int")));
-						break;
-					}
-
-					case "double": {
-						let number = this.db.formGroup("MatcIgnoreOnKeyPress", "Value", rule.value, "").build(this.domNode);
-						this.tempOwn(on(number, "keyup", lang.hitch(this, "setRuleValueNumber", number, "double")));
-						break;
-					}
-
-				  default: {
-				    let text = this.db.formGroup("MatcIgnoreOnKeyPress", "Value", rule.value, "").build(row);
-						this.tempOwn(on(text, "keyup", lang.hitch(this, "setRuleValueText", text)));
-						break;
-					}
-				}
+			/**
+			 * A TextBox is stored as a string but a numeric validation means it
+			 * compares as a number.
+			 */
+			const validationType = RuleModel.getValidationType(widget);
+			if (validationType === "int" || validationType === "double") {
+				this._renderValueInput(row, rule, validationType);
 			} else {
-				let text = this.db.formGroup("MatcIgnoreOnKeyPress", "Value", rule.value, "").build(row);
-				this.tempOwn(on(text, "keyup", lang.hitch(this, "setRuleValueText", text)));
+				this._renderValueInput(row, rule, null);
 			}
+		},
 
+		renderValue_int (row, widget, rule){
+			this._renderValueInput(row, rule, "int");
+		},
 
+		/**
+		 * DomBuilder.formGroup() brings its own .form-group and label, so this
+		 * builds straight into the row. It used to be handed a .form-group that
+		 * the caller had already created and left behind an empty one, and the
+		 * numeric variants appended to domNode instead, which put the value
+		 * editor after the hint no matter which row came last.
+		 */
+		_renderValueInput (row, rule, type){
+			const input = this.db.formGroup("MatcIgnoreOnKeyPress", "Value", rule.value, "").build(row);
+			if (type) {
+				this._addListener("value", input, "keyup", lang.hitch(this, "setRuleValueNumber", input, type));
+			} else {
+				this._addListener("value", input, "keyup", lang.hitch(this, "setRuleValueText", input));
+			}
 		},
 
 		renderValue_isBinding (row) {
 			this.db.span('MatcHint', 'Use ${variable} synthax to compare against databinding variables.').build(row)
 		},
 
-		renderValue_int (row, widget, rule){
-			var number = this.db.formGroup("MatcIgnoreOnKeyPress", "Value", rule.value, "").build(this.domNode);
-			this.tempOwn(on(number, "keyup", lang.hitch(this, "setRuleValueNumber", number, "int")));
-		},
-
-		getOperators (widget){
-			var result = [];
-			var type = this.widgetOutputTypes[widget.type];
-			switch(type){
-				case "checked":
-							result.push({"value" : "checked", label:"Checked"});
-							result.push({"value" : "notchecked", label:"Not Checked"});
-			        break;
-				case "active":
-							result.push({"value" : "active", label:"Active"});
-							result.push({"value" : "notactive", label:"Not Active"});
-			        break;
-			    case "date":
-			    		result.push({"value" : "isValid", label:"Is valid"});
-			        break;
-			    case "string":
-			        result.push({"value" : "isValid", label:"Is valid"});
-			        result.push({"value" : "==", label:"Equals (==)"});
-							result.push({"value" : "!=", label:"Not Equals (!=)"});
-							result.push({"value" : "contains", label: "Matches (~)"})
-			        break;
-			    case "int":
-			        result.push({"value" : "isValid", label:"Is valid"});
-			        result.push({"value" : "==", label:"Equals (==)"});
-							result.push({"value" : "!=", label:"Not Equals (!=)"});
-							result.push({"value" : ">", label:"Bigger (>)"});
-							result.push({"value" : "<", label:"Smaller (<)"});
-							result.push({"value" : ">=", label:"Bigger Equals (>=)"});
-							result.push({"value" : "<=", label:"Smaller Equals(<=)"});
-			        break;
-			    case "options":
-							result.push({"value" : "==", label:"Equals"});
-							result.push({"value" : "!=", label:"Not Equals"});
-			        break;
-			    default:
-			    	console.warn("getOperators() > not supported type", widget.type, type)
-			}
-
-			if(type == "string"){
-
-				if(widget.props && widget.props.validation){
-					var val = widget.props.validation;
-					var valType = val.type;
-
-					switch(valType){
-						case "int":
-								result.push({"value" : ">", label:"Bigger (>)"});
-								result.push({"value" : "<", label:"Smaller (<)"});
-								result.push({"value" : ">=", label:"Bigger Equals (>=)"});
-								result.push({"value" : "<=", label:"Smaller Equals(<=)"});
-								break;
-						case "double":
-								result.push({"value" : ">", label:"Bigger (>)"});
-								result.push({"value" : "<", label:"Smaller (<)"});
-								result.push({"value" : ">=", label:"Bigger Equals (>=)"});
-								result.push({"value" : "<=", label:"Smaller Equals(<=)"});
-								break;
-					  case "string":
-					      result.push({"value" : "contains", label:"Contains"})
-					      break;
-					  default:
-					    	//console.warn("getOperators() > not supported validaton string type", valType, val)
-					}
-
-				}
-
-			}
-			return result;
-		},
-
+		/**********************************************************
+		 * Candidates
+		 **********************************************************/
 		getTypeOption () {
-			let widget = this.getFromWidget()
-			if (widget && widget.type === 'Rest') {
-				return [
-					{value: "widget", label: "Widget"},
-					{value: "databinding", label: "DataBinding"},
-					{value: "rest", label: "Rest"}
-				]
-			}
-			return [
-					{value: "widget", label: "Widget"},
-          {value: "databinding", label: "DataBinding"}
-			]
+			return RuleModel.getTypeOptions(this.getFromWidget());
 		},
 
 		getFromWidget () {
-			for(let id in this.model.widgets){
-				let widget = this.model.widgets[id];
-				if (widget.id === this.line.from) {
-					return widget;
-				}
-			}
+			return RuleModel.findFromWidget(this.model.widgets, this.line.from);
 		},
 
 		getUIWidgets (){
-			var result = [];
+			return RuleModel.getUIWidgets(this.model, this.screenIDs, this.widgetOutputTypes);
+		},
 
-			if(this.screenIDs && this.screenIDs.length >0){
-				let _ids = {};
-				for(let j=0; j< this.screenIDs.length; j++){
-					let screenID = this.screenIDs[j];
-					let screen = this.model.screens[screenID];
-					if(screen){
-						let children = screen.children;
-						for(let i=0; i< children.length; i++){
-							let id = children[i];
-							let widget = this.model.widgets[id];
-							if(this.widgetOutputTypes[widget.type] && !_ids[widget.id]){
-								result.push({"value" : widget.id, label:widget.name});
-								_ids[widget.id] = true;
-							}
-						}
-					} else {
-						console.warn("getUIWidgets() > No screen with id : " , screenID);
-					}
-				}
-			} else {
-				for(let id in this.model.widgets){
-					let widget = this.model.widgets[id];
-					if(this.widgetOutputTypes[widget.type]){
-						result.push({"value" : widget.id, label:widget.name});
-					}
-				}
+		/**
+		 * Called by ActionButton once the dialog has finished its entry
+		 * animation. Focusing from renderDataBinding() used to fight it: the
+		 * timer was re-armed on every render, so the field grabbed the cursor
+		 * back from whatever the user had just clicked.
+		 */
+		focusDataBinding (){
+			if (this._dataBindingInput) {
+				this._dataBindingInput.focus();
 			}
-
-			result.sort(function (a, b){
-				return a.label.localeCompare(b.label);
-			});
-
-			return result;
 		},
 
-		getOptions (widget){
-			var result = [];
-			var options = widget.props.options;
-	    	if(options){
-	    		for(var i =0; i< options.length; i++){
-	    			result.push({"value" : options[i], label:options[i]});
-	    		}
-	    	}
-	    	return result;
-		},
-
+		/**********************************************************
+		 * Setters
+		 *
+		 * Each one is a hand off to a transition and nothing else. See _apply().
+		 **********************************************************/
 		setType (type) {
-			this.value.type = type;
-			this.value.operator = null;
-			this.value.value = null;
-			this.value.databinding = null;
-			this.value.widget = null;
-			this.render(this.value);
-			this._onChange();
+			if (this._apply(RuleModel.applyType, type) && type === 'databinding') {
+				/**
+				 * Switching to the variable is a deliberate request for the field,
+				 * so this is the one place besides opening the dialog where the
+				 * cursor belongs. Doing it anywhere else would fight the user.
+				 */
+				this.focusDataBinding();
+			}
 		},
 
 		setDataBinding (databinding) {
-			this.value.databinding = databinding;
-			this.value.operator = null;
-			this.value.value = null;
-			this.render(this.value);
-			this._onChange();
+			this._apply(RuleModel.applyDataBinding, databinding);
 		},
 
 		setRest (restResponseStatus) {
-			this.value.restResponseStatus = restResponseStatus;
-			this.value.operator = null;
-			this.value.value = null;
-			this.render(this.value);
-			this._onChange();
+			this._apply(RuleModel.applyRest, restResponseStatus);
 		},
 
 		setWidget (id){
-			this.value.widget = id;
-			this.value.operator = null;
-			this.value.value = null;
-			this.value.databinding = null;
-			this.render(this.value);
-			this._onChange();
+			this._apply(RuleModel.applyWidget, id);
 		},
 
 		setOperator (value){
-			this.value.operator = value;
-			this.render(this.value);
-			this._onChange();
+			this._apply(RuleModel.applyOperator, value);
 		},
 
 		setRuleValue (value){
-			this.value.value = value;
-			this._onChange();
+			this._apply(RuleModel.applyRuleValue, value);
 		},
 
 		setRuleValueText (input){
-			this.value.value = input.value;
-			this._onChange();
+			this._apply(RuleModel.applyRuleValue, input.value);
 		},
-
-		setText (input){
-			this.value.text = input.value;
-			this._onChange();
-		},
-
 
 		setRuleValueNumber (input, type){
-
-			if(type == "int"){
-				let min = input.value;
-				let re = /^-?[0-9]+$/;
-				if( re.test(min)){
-					min = parseInt(min);
-					this.value.value = min;
-					css.remove(input.parentNode, "has-error");
-				} else {
-					css.add(input.parentNode, "has-error");
-				}
+			const value = RuleModel.parseRuleValue(input.value, type);
+			if (value === null) {
+				/**
+				 * Keep the last valid value. The field is marked instead.
+				 */
+				css.add(input.parentNode, "has-error");
+				return;
 			}
-			if(type == "double"){
-				let min = input.value;
-				let re = /^-?[0-9]+((\.|,)[0-9]+)?$/;
-				if( re.test(min)){
-					min = parseInt(min);
-					this.value.value = min;
-					css.remove(input.parentNode, "has-error");
-				} else {
-					css.add(input.parentNode, "has-error");
-				}
-			}
-
-			this._onChange();
+			css.remove(input.parentNode, "has-error");
+			this._apply(RuleModel.applyRuleValue, value);
 		},
 
 		_onChange (){
-
+			/**
+			 * Anything the user just touched is an attempt to fix it.
+			 */
+			this.showError(null);
 		}
     },
     mounted () {
@@ -526,7 +541,11 @@ export default {
 		}
 		if (this.l) {
 			this.setValue(this.l)
+			/**
+			 * There is no dialog here to hand the focus over from.
+			 */
+			this.focusDataBinding()
 		}
-    }
+	}
 }
 </script>

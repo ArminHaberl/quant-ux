@@ -43,12 +43,31 @@ export default {
 				if (this.fireOnBlur) {
 					this.own(on(this.input, "blur", lang.hitch(this, "onBlur")));
 				}
+				this._committedValue = this.input.value
+			},
+
+			/**
+			 * Report a value the caller does not have yet, and remember it.
+			 *
+			 * Blur used to emit change unconditionally, even for text that was
+			 * never edited. Every fireOnBlur consumer treats that as "reset the
+			 * rest of the form": the OR rule dialog (Rule.vue) clears operator
+			 * and value on every setDataBinding(), so tabbing or clicking away
+			 * from the field threw the operator away again. setValue() marks
+			 * what the caller already knows, which is how a pre-filled field
+			 * stays quiet until it is actually edited.
+			 */
+			_commit (value) {
+				if (value && value !== this._committedValue) {
+					this._committedValue = value
+					this.emit('change', value)
+					return true
+				}
+				return false
 			},
 
 			onBlur () {
-				if (this.input.value) {
-					this.emit('change', this.input.value)
-				}
+				this._commit(this.input.value)
 			},
 
 			onFocus () {
@@ -132,7 +151,7 @@ export default {
 						}
 
 						if (this.fireOnBlur) {
-							this.emit('change', this.input.value)
+							this._commit(this.input.value)
 							return
 						} else {
 							console.debug("onKey() Ignore empty ENTER", )
@@ -212,6 +231,7 @@ export default {
 					this.emit(s.action, s)
 				} else {
 					this.input.value = s.value;
+					this._committedValue = s.value
 					this.emit('change', s.value)
 					this.hideSuggestion();
 				}
@@ -223,6 +243,7 @@ export default {
 
 			setValue (value) {
 				this.input.value = value;
+				this._committedValue = value
 			},
 
 			hideSuggestion (){
