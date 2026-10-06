@@ -41,6 +41,109 @@ export function isScriptAnimation (change) {
 }
 
 /**
+ * The animation deltas of a run, in the order the script asked for them.
+ *
+ * They are recorded inside the ScriptEffect event so a replay can run them
+ * again. Nothing else carries them: a worker delta never reaches the model,
+ * and without this filter logScriptEffect() would not even write an event for
+ * a script that only animates.
+ */
+export function collectScriptAnimations (appDeltas) {
+    return (appDeltas || []).filter(change => isScriptAnimation(change))
+}
+
+/**
+ * What this run changed on widgets, in the order it changed it.
+ *
+ * Two kinds of change, in one list, because the order is the record: the style
+ * and prop deltas the worker produced, and the display writes the animations
+ * do to the model themselves.
+ *
+ * The display writes cannot be read back from the model. fadeIn and typewriter
+ * put display:block on the widget before the tween starts (writeStyle()),
+ * fadeOut puts display:none on it once the tween has ended (the onEnd
+ * callback), and that one has not run when the event is logged. They are also
+ * not deltas: nothing in the worker ever asked for them, so this is the only
+ * place they can be recorded. Without them a replay would render the widget
+ * from the unmutated model and show an element the live run had hidden, or
+ * keep one the live run had revealed.
+ *
+ * Kept next to applyWidgetAnimation() and applyGroupAnimation() so the show
+ * and hide rules cannot drift apart from the animations they belong to.
+ */
+export function getWidgetChanges (model, appDeltas) {
+    const changes = []
+    ;(appDeltas || []).forEach(change => {
+        if (!change) {
+            return
+        }
+        if (change.type === 'Widget' && change.id && (change.key === 'style' || change.key === 'props')) {
+            changes.push({
+                id: change.id,
+                key: change.key,
+                value: change.key === 'style' ? change.style : change.props
+            })
+            return
+        }
+        const displayChanges = getAnimationDisplayChanges(model, change)
+        for (let i = 0; i < displayChanges.length; i++) {
+            changes.push(displayChanges[i])
+        }
+    })
+    return changes
+}
+
+/**
+ * What one animation delta leaves on the model, one change per widget. Empty
+ * when it leaves nothing: unknown animations have no display rule for a single
+ * element, because applyWidgetAnimation() schedules nothing for them.
+ *
+ * A group is different: applyGroupAnimation() falls through to fadeIn, and its
+ * fallback for a child on another screen is the same, so every child ends up
+ * display:block unless it was a fadeOut.
+ */
+function getAnimationDisplayChanges (model, change) {
+    if (!isScriptAnimation(change)) {
+        return []
+    }
+    let display = null
+    if (change.type === 'GroupAnimation') {
+        display = change.animation === 'fadeOut' ? 'none' : 'block'
+    } else if (change.animation === 'fadeIn' || change.animation === 'typewriter') {
+        display = 'block'
+    } else if (change.animation === 'fadeOut') {
+        display = 'none'
+    }
+    if (!display) {
+        return []
+    }
+
+    const widgets = model && model.widgets ? model.widgets : null
+    const ids = []
+    if (change.type === 'GroupAnimation') {
+        const group = model && model.groups ? model.groups[change.id] : null
+        if (!group) {
+            return []
+        }
+        /**
+         * The same fan out as applyGroupAnimation(), including the flattening
+         * of sub groups, so what is recorded matches what was animated.
+         */
+        ModelUtil.getAllGroupChildren(group, model).forEach(id => ids.push(id))
+    } else {
+        ids.push(change.id)
+    }
+
+    /**
+     * Children that are not in the model were never written to either:
+     * writeStyle() warns and returns for them.
+     */
+    return ids
+        .filter(id => widgets && widgets[id])
+        .map(id => ({ id: id, key: 'style', value: { display: display } }))
+}
+
+/**
  * Apply a delta if it is one of ours. Returns what was scheduled, or null.
  *
  * Anything else is left alone for ScriptToModel to merge into the model.

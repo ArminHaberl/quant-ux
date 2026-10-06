@@ -42,6 +42,7 @@ import Preview from 'page/Preview'
 import Core from 'core/Core'
 import Services from 'services/Services'
 import JSONPath from 'core/JSONPath'
+import { getEventAnimations, expandAnimations, getFrameStyle, getEndStyle } from 'core/engines/ScriptAnimationReplay'
 
 export default {
     name: 'Player',
@@ -165,6 +166,15 @@ export default {
 				this.duration = this.session.max("time") - this.session.min("time");
 				this.min = this.session.min("time");
 
+				/**
+				 * Find the animations a script recorded, and stretch the
+				 * duration so a fade triggered by the last click still has
+				 * room to play out. Must happen before render(), which takes
+				 * the duration as the slider maximum, and before
+				 * initAnimations() builds the slot map from it.
+				 */
+				this.collectScriptAnimations();
+
 
 				/**
 				 * init widget states
@@ -237,6 +247,44 @@ export default {
 
 
 		/**
+		 * Collect the animations a script recorded, per event, and stretch the
+		 * duration of the replay to cover them.
+		 *
+		 * The schedules are resolved against the model once here and reused by
+		 * initAnimations(), because a group animation has to be fanned out to
+		 * its children to know how long the last of them takes, and both
+		 * passes have to agree on those delays.
+		 */
+		collectScriptAnimations (){
+			this._scriptAnimationSchedules = {};
+			var end = 0;
+			for(let i=0; i < this.events.length;i++){
+				var event = this.events[i];
+				var animations = getEventAnimations(event);
+				if(animations.length === 0){
+					continue;
+				}
+				var schedules = expandAnimations(this.model, animations);
+				this._scriptAnimationSchedules[event.id] = schedules;
+				var start = event.time - this.min;
+				for(let j=0; j < schedules.length;j++){
+					var schedule = schedules[j];
+					end = Math.max(end, start + schedule.delay + schedule.duration);
+				}
+			}
+
+			/**
+			 * Two slots of tail. Playback stops at this.duration, so an
+			 * animation that ends exactly there would never show its last
+			 * frame, and with it the state the widget is left in.
+			 */
+			if(end > 0){
+				this.duration = Math.max(this.duration, end + 60);
+			}
+		},
+
+
+		/**
 		 * This method will loop over all events and will calculate the state for all widgets
 		 */
 		initAnimations(){
@@ -291,11 +339,11 @@ export default {
 						for(let id in widgetInited){
 							var orgStyle = widgetInited[id];
 							this._widgetAnimationStates[j][id].style = orgStyle;
-							lastState[animWidgetId] = orgStyle;
+							lastState[id] = orgStyle;
 
 							var orgPos = widgetInitedPos[id];
 							this._widgetAnimationStates[j][id].pos = orgPos;
-							lastPos[animWidgetId] = orgPos;
+							lastPos[id] = orgPos;
 						}
 
 
@@ -450,6 +498,76 @@ export default {
 						}
 					} else {
 						console.warn("initAnimations() > No widgte", animWidgetId);
+					}
+				}
+
+				if(event.type == "ScriptEffect"){
+					/**
+					 * A script animation is recorded as a request, not as a
+					 * timeline: the worker that asked for it has no DOM, so
+					 * there is nothing in the event to interpolate. The frames
+					 * are built here, the way the Animation branch above does
+					 * it, with one difference: the style is kept after the end
+					 * as well. A fade leaves a state behind (shown, hidden),
+					 * it does not fall back to what was there before.
+					 */
+					var scriptSchedules = (event.id && this._scriptAnimationSchedules)
+						? this._scriptAnimationSchedules[event.id]
+						: null;
+					if(!scriptSchedules){
+						scriptSchedules = expandAnimations(this.model, getEventAnimations(event));
+					}
+					for(let s=0; s < scriptSchedules.length; s++){
+						var schedule = scriptSchedules[s];
+						var scriptWidgetID = schedule.id;
+						var scriptWidget = this.model.widgets[scriptWidgetID];
+						if(!scriptWidget){
+							continue;
+						}
+
+						/**
+						 * Seed the widget with its original style, exactly like
+						 * a recorded Animation event would. That is what makes
+						 * the ScreenLoaded reset above reach it, and what fills
+						 * the slots before the trigger.
+						 */
+						if(!widgetInited[scriptWidgetID]){
+							let orginalStyle = this.initWidgetAnimation(scriptWidgetID, scriptWidget);
+							widgetInited[scriptWidgetID] = orginalStyle;
+							lastState[scriptWidgetID] = orginalStyle;
+
+							let orgPos = this.initWidgetAnimationPos(scriptWidgetID, scriptWidget);
+							widgetInitedPos[scriptWidgetID] = orgPos;
+							lastPos[scriptWidgetID] = orgPos;
+						}
+
+						var orgScriptStyle = widgetInited[scriptWidgetID];
+						var scriptEndSlot = start + schedule.delay + schedule.duration;
+
+						/**
+						 * One object for all the slots after the end. It keeps
+						 * one _aid, so it is written to the DOM exactly once
+						 * and then leaves the frame alone, which is what lets a
+						 * script that hides the widget afterwards win again.
+						 */
+						var scriptEndStyle = getEndStyle(schedule, orgScriptStyle);
+						scriptEndStyle._aid = this.styleIDCounter++;
+						scriptEndStyle._org = false;
+
+						for(let j=start; j < this.duration; j+=30){
+							var scriptStyle;
+							if(j < scriptEndSlot){
+								scriptStyle = getFrameStyle(j - start, schedule, orgScriptStyle);
+								scriptStyle._aid = this.styleIDCounter++;
+								scriptStyle._org = false;
+							} else {
+								scriptStyle = scriptEndStyle;
+							}
+							if(this._widgetAnimationStates[j][scriptWidgetID]){
+								this._widgetAnimationStates[j][scriptWidgetID].style = scriptStyle;
+							}
+							lastState[scriptWidgetID] = scriptStyle;
+						}
 					}
 				}
 			}

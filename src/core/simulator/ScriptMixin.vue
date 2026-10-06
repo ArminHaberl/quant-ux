@@ -169,20 +169,28 @@ export default {
         }
     },
 
-    getScriptWidgetChanges (result) {
-        return (result.appDeltas || [])
-            .filter(change => change && change.type === 'Widget' && change.id && (change.key === 'style' || change.key === 'props'))
-            .map(change => ({
-                id: change.id,
-                key: change.key,
-                value: change.key === 'style' ? change.style : change.props
-            }))
+    /**
+     * The animations this run asked for, recorded so the VideoPlayer can
+     * replay them. They are not widget changes: the model never holds an
+     * opacity timeline, and a script that only animates would otherwise
+     * produce no event at all.
+     */
+    getScriptAnimations (result) {
+        return ScriptAnimations.collectScriptAnimations(result.appDeltas)
     },
 
     logScriptEffect (result, widget, dataBefore) {
         const dataChanges = this.getScriptDataChanges(dataBefore, result.viewModel || this.dataBindingValues || {})
-        const widgetChanges = this.getScriptWidgetChanges(result)
-        if (dataChanges.length === 0 && widgetChanges.length === 0) {
+        const animations = this.getScriptAnimations(result)
+        /**
+         * The style and prop deltas of the run plus the display writes its
+         * animations do, in the order the script produced them: hide() and
+         * then a fade in has to record block last, a fade in and then a hide
+         * has to record none last, because that is what the model is left
+         * holding in the live run.
+         */
+        const widgetChanges = ScriptAnimations.getWidgetChanges(this.model, result.appDeltas)
+        if (dataChanges.length === 0 && widgetChanges.length === 0 && animations.length === 0) {
             return
         }
 
@@ -191,7 +199,8 @@ export default {
             type: 'script',
             value: {
                 dataChanges,
-                widgetChanges
+                widgetChanges,
+                animations
             }
         })
     },

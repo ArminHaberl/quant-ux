@@ -540,3 +540,169 @@ describe('ScriptAnimations single element typewriter', () => {
         expect(scheduled).toEqual([])
     })
 })
+
+describe('ScriptAnimations.collectScriptAnimations', () => {
+
+    /**
+     * This is what makes the animation visible in the VideoPlayer at all: the
+     * deltas never reach the model, so if they are not picked out here the
+     * ScriptEffect event does not carry them, and for a script that only
+     * animates it carries nothing and is not written at all.
+     */
+    test('keeps the animation deltas and nothing else', () => {
+        const deltas = [
+            { type: 'Widget', key: 'style', id: 'w1', style: {} },
+            { type: 'WidgetAnimation', id: 'w1', animation: 'fadeIn', duration: 300 },
+            { type: 'Screen', key: 'style', id: 's1', style: {} },
+            { type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: 60 },
+            { type: 'Widget', key: 'props', id: 'w1', props: {} }
+        ]
+        expect(ScriptAnimations.collectScriptAnimations(deltas).map(c => c.type))
+            .toEqual(['WidgetAnimation', 'GroupAnimation'])
+    })
+
+    test('a run without deltas records no animation', () => {
+        expect(ScriptAnimations.collectScriptAnimations(undefined)).toEqual([])
+        expect(ScriptAnimations.collectScriptAnimations([{ type: 'Widget', key: 'style', id: 'w1', style: {} }])).toEqual([])
+    })
+})
+
+describe('ScriptAnimations.getWidgetChanges', () => {
+
+    function changes (appDeltas) {
+        const h = harness({})
+        return ScriptAnimations.getWidgetChanges(h.model, appDeltas)
+    }
+
+    test('a style delta is recorded as it was asked for', () => {
+        expect(changes([{ type: 'Widget', id: 'w1', key: 'style', style: { background: 'red' } }]))
+            .toEqual([{ id: 'w1', key: 'style', value: { background: 'red' } }])
+    })
+
+    test('a prop delta is recorded as it was asked for', () => {
+        expect(changes([{ type: 'Widget', id: 'w1', key: 'props', props: { label: 'Go' } }]))
+            .toEqual([{ id: 'w1', key: 'props', value: { label: 'Go' } }])
+    })
+
+    test('deltas that are not a widget style or prop are ignored', () => {
+        expect(changes([
+            { type: 'Screen', id: 's1', key: 'style', style: {} },
+            { type: 'Widget', id: 'w1', key: 'data', data: {} },
+            { type: 'Widget', key: 'style', style: {} },
+            null
+        ])).toEqual([])
+    })
+
+    test('a fade in records the widget as visible', () => {
+        expect(changes([{ type: 'WidgetAnimation', id: 'w1', animation: 'fadeIn', duration: 300 }]))
+            .toEqual([{ id: 'w1', key: 'style', value: { display: 'block' } }])
+    })
+
+    test('a typewriter records the widget as visible', () => {
+        expect(changes([{ type: 'WidgetAnimation', id: 'w1', animation: 'typewriter', duration: 300 }]))
+            .toEqual([{ id: 'w1', key: 'style', value: { display: 'block' } }])
+    })
+
+    /**
+     * The live run writes this in onEnd, which has not run when the event is
+     * logged, so it cannot be read back from the model.
+     */
+    test('a fade out records the widget as hidden', () => {
+        expect(changes([{ type: 'WidgetAnimation', id: 'w1', animation: 'fadeOut', duration: 300 }]))
+            .toEqual([{ id: 'w1', key: 'style', value: { display: 'none' } }])
+    })
+
+    /**
+     * applyWidgetAnimation() schedules nothing for an animation it does not
+     * know, and writes no style either.
+     */
+    test('an unknown widget animation records no display', () => {
+        expect(changes([{ type: 'WidgetAnimation', id: 'w1', animation: 'zoomIn', duration: 300 }])).toEqual([])
+    })
+
+    test('a widget that is not in the model records no display', () => {
+        expect(changes([{ type: 'WidgetAnimation', id: 'nope', animation: 'fadeIn', duration: 300 }])).toEqual([])
+    })
+
+    test('a group fade in records every child as visible', () => {
+        expect(changes([{ type: 'GroupAnimation', id: 'g1', animation: 'fadeIn', duration: 300, step: 60 }]))
+            .toEqual([
+                { id: 'w1', key: 'style', value: { display: 'block' } },
+                { id: 'w2', key: 'style', value: { display: 'block' } },
+                { id: 'w3', key: 'style', value: { display: 'block' } }
+            ])
+    })
+
+    test('a group fade out records every child as hidden', () => {
+        expect(changes([{ type: 'GroupAnimation', id: 'g1', animation: 'fadeOut', duration: 300, step: 60 }]))
+            .toEqual([
+                { id: 'w1', key: 'style', value: { display: 'none' } },
+                { id: 'w2', key: 'style', value: { display: 'none' } },
+                { id: 'w3', key: 'style', value: { display: 'none' } }
+            ])
+    })
+
+    test('a group reveal and a group typewriter record every child as visible', () => {
+        const reveal = changes([{ type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: 60 }])
+        const typewriter = changes([{ type: 'GroupAnimation', id: 'g1', animation: 'typewriter', duration: 300, step: 60 }])
+        expect(reveal.every(c => c.value.display === 'block')).toBe(true)
+        expect(typewriter.every(c => c.value.display === 'block')).toBe(true)
+    })
+
+    /**
+     * applyGroupAnimation() has no refusal: anything that is not a fadeOut or
+     * a staggered animation lands in its fadeIn branch, which writes
+     * display:block. Recording nothing here would leave the replay disagreeing
+     * with the live run about a widget it did show.
+     */
+    test('an unknown group animation records every child as visible', () => {
+        expect(changes([{ type: 'GroupAnimation', id: 'g1', animation: 'wobble', duration: 300, step: 60 }]))
+            .toEqual([
+                { id: 'w1', key: 'style', value: { display: 'block' } },
+                { id: 'w2', key: 'style', value: { display: 'block' } },
+                { id: 'w3', key: 'style', value: { display: 'block' } }
+            ])
+    })
+
+    test('a group that is not in the model records no display', () => {
+        expect(changes([{ type: 'GroupAnimation', id: 'nope', animation: 'reveal', duration: 300, step: 60 }])).toEqual([])
+    })
+
+    test('a child that is not in the model records no display', () => {
+        const h = harness({})
+        h.model.groups.g1.children = ['w1', 'nope']
+        expect(ScriptAnimations.getWidgetChanges(h.model, [
+            { type: 'GroupAnimation', id: 'g1', animation: 'fadeOut', duration: 300, step: 60 }
+        ])).toEqual([{ id: 'w1', key: 'style', value: { display: 'none' } }])
+    })
+
+    /**
+     * The order is the record: both changes land in the same style object when
+     * the player merges them, so the last one is what the model is left
+     * holding in the live run, and it has to be what the replay ends on too.
+     */
+    test('a widget that is hidden and then faded in records the reveal last', () => {
+        expect(changes([
+            { type: 'Widget', id: 'w1', key: 'style', style: { display: 'none' } },
+            { type: 'WidgetAnimation', id: 'w1', animation: 'fadeIn', duration: 300 }
+        ])).toEqual([
+            { id: 'w1', key: 'style', value: { display: 'none' } },
+            { id: 'w1', key: 'style', value: { display: 'block' } }
+        ])
+    })
+
+    test('a widget that is faded in and then hidden records the hide last', () => {
+        expect(changes([
+            { type: 'WidgetAnimation', id: 'w1', animation: 'fadeIn', duration: 300 },
+            { type: 'Widget', id: 'w1', key: 'style', style: { display: 'none' } }
+        ])).toEqual([
+            { id: 'w1', key: 'style', value: { display: 'block' } },
+            { id: 'w1', key: 'style', value: { display: 'none' } }
+        ])
+    })
+
+    test('a run with no deltas records nothing', () => {
+        expect(changes(undefined)).toEqual([])
+        expect(changes([])).toEqual([])
+    })
+})
