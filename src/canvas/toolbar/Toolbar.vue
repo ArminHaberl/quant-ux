@@ -700,6 +700,17 @@ export default {
 			this._selectionPaths = null
 
 			/**
+			 * The name inputs still hold the values of the selection we just
+			 * dropped. Forget who they belonged to, so that they cannot be
+			 * flushed into whatever gets selected next.
+			 */
+			this._widgetNameOwnerID = null
+
+			this._screenNameOwnerID = null
+
+			this._groupNameOwnerID = null
+
+			/**
 			 * UGLY: Make sure the widget drop down is closed. We should have a loop for all
 			 * drop downs!
 			 */
@@ -721,15 +732,27 @@ export default {
 			 * FIXME; This can cause errors in case of undo and redo!
 			 */
 			if (this.isPrototypeView) {
-				if (this.screenName) {
+				/**
+				 * The name inputs are single, shared elements which are repopulated
+				 * per selection. The selection fields (_selectedWidget etc) are
+				 * assigned after cleanUp() has run, so a flush here would write the
+				 * previous selection's text into the new one. Only flush an input
+				 * while it still belongs to the object that is selected. The owner
+				 * ids are stamped wherever the inputs are filled, see
+				 * _ShowWidget / _ShowScreen / _ShowGroup.
+				 */
+				const widgetID = this._selectedWidget ? this._selectedWidget.id : null;
+				const screenID = this._selectedScreen ? this._selectedScreen.id : null;
+				const groupID = this._selectedGroup ? this._selectedGroup.id : null;
+				if (this.screenName && this._screenNameOwnerID && this._screenNameOwnerID === screenID) {
 					this.setScreenName(this.stripHTML(this.screenName.value));
 				}
-				
-				if (this.widgetName) {
+
+				if (this.widgetName && this._widgetNameOwnerID && this._widgetNameOwnerID === widgetID) {
 					this.setWidgetName(this.stripHTML(this.widgetName.value));
 				}
 
-				if (this.groupName) {
+				if (this.groupName && this._groupNameOwnerID && this._groupNameOwnerID === groupID) {
 					this.setGroupName(this.stripHTML(this.groupName.value));
 				}
 			}
@@ -750,20 +773,28 @@ export default {
 		/**
 		 * The layer list needs to be able to set the name, otherwise the _flushInputFields
 		 * method will be called after and write the old value!
+		 *
+		 * The layer list can rename objects which are not selected. Since the input is
+		 * shared, writing such a name here makes the input describe a different object
+		 * than the selected one, so we drop the ownership in that case. Otherwise the
+		 * flush would write this name into the selected object.
 		 */
 		onModelNameChange (id, type, txt){
 			if (type == "widget"){
 				if (this.widgetName) {
 					this.widgetName.value = txt
+					this._widgetNameOwnerID = this._selectedWidget && this._selectedWidget.id === id ? id : null
 				}
 				
 			} else if (type == "screen"){
 				if (this.screenName) {
 					this.screenName.value = txt
+					this._screenNameOwnerID = this._selectedScreen && this._selectedScreen.id === id ? id : null
 				}
 			} else if (type == "group"){
 				if (this.groupName) {
 					this.groupName.value = txt
+					this._groupNameOwnerID = this._selectedGroup && this._selectedGroup.id === id ? id : null
 				}
 			}
 		},
@@ -2143,7 +2174,13 @@ export default {
 
 		setScreenName (value){
 			this.logger.log(3,"setScreenName", "entry > " + value);
-			if(this._selectedScreen){
+			/**
+			 * Only write while the input still belongs to the selected screen.
+			 * See _flushInputFields(). Without this the layer list can leave a
+			 * foreign name in the shared input, and the blur fired here would
+			 * rename the selected screen with it.
+			 */
+			if(this._selectedScreen && this._screenNameOwnerID === this._selectedScreen.id){
 				this.controller.setScreenName(this._selectedScreen.id, value);
 			}
 		},
@@ -2160,17 +2197,23 @@ export default {
 
 		setWidgetName (value){
 			this.logger.log(3,"setWidgetName", "entry > " + value);
-			if(this._selectedWidget){
-				/**
-				 * FIXME: we could catch if there was a change... well for now the
-				 * controller does it...
-				 */
+			/**
+			 * FIXME: we could catch if there was a change... well for now the
+			 * controller does it...
+			 *
+			 * The ownership check is what stops a name being written into the
+			 * wrong widget. Both entry points funnel through here: the flush in
+			 * _flushInputFields() and the 'change' event which _blurInputFields()
+			 * provokes. The latter fires whenever the user typed in the field,
+			 * so it needs the same guard as the flush.
+			 */
+			if(this._selectedWidget && this._widgetNameOwnerID === this._selectedWidget.id){
 				this.controller.setWidgetName(this._selectedWidget.id, value);
 			}
 		},
 
 		setGroupName (value){
-			if(this._selectedGroup && this._selectedGroup.name !== value){
+			if(this._selectedGroup && this._groupNameOwnerID === this._selectedGroup.id && this._selectedGroup.name !== value){
 				this.logger.log(-1,"setGroupName", "entry > " + value);
 				this.controller.setGroupName(this._selectedGroup.id, value);
 			}

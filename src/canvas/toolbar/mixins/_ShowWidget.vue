@@ -60,6 +60,7 @@ export default {
 					this.widgetName.value = "";
 				}
 				this.widgetName.blur();
+				this._widgetNameOwnerID = model.id;
 			}
 
 			const isLogicWidget = this.hasLogic2.indexOf(model.type) >= 0;
@@ -331,6 +332,7 @@ export default {
 					this.widgetName.value = "";
 				}
 				this.widgetName.blur();
+				this._widgetNameOwnerID = model.id;
 			}
 			css.remove(this.widgetNameDiv, "MatcToolbarSectionHidden");
 			css.add(this.widgetSizeDiv, "MatcToolbarSectionHidden")
@@ -483,6 +485,7 @@ export default {
 					this.widgetName.value = "";
 				}
 				this.widgetName.blur();
+				this._widgetNameOwnerID = model.id;
 			}
 
 			css.remove(this.widgetShapeDiv, "MatcToolbarSectionHidden");

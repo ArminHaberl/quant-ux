@@ -43,6 +43,7 @@ export default {
 				css.remove(this.groupNameDiv, "MatcToolbarSectionHidden");
 				this.groupName.value = model.name ? model.name : "";
 				this.groupName.blur();
+				this._groupNameOwnerID = model.id;
 			}
 	
 			css.remove(this.groupActionDiv, "MatcToolbarSectionHidden");
@@ -79,6 +80,7 @@ export default {
 					this.groupName.value = "";
 				}
 				this.groupName.blur();
+				this._groupNameOwnerID = model.id;
 			}
 
 			let fixed = true;
@@ -107,6 +109,7 @@ export default {
 				css.remove(this.groupNameDiv, "MatcToolbarSectionHidden");
 				this.groupName.value = model.name ? model.name : "";
 				this.groupName.blur();
+				this._groupNameOwnerID = model.id;
 			}
 	
 			this.lowCodeSection.setValue(model, true)

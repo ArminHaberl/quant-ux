@@ -55,6 +55,7 @@ export default {
 						this.screenName.value = "";
 					}
 					this.screenName.blur();
+					this._screenNameOwnerID = model.id;
 					css.remove(this.screenNameDiv, "MatcToolbarSectionHidden");
 				}
 
@@ -143,6 +144,7 @@ export default {
 						this.screenName.value = "";
 					}
 					this.screenName.blur();
+					this._screenNameOwnerID = model.id;
 				}
 
 				if(this.screenDownLoad) {
@@ -172,6 +174,7 @@ export default {
 					this.screenName.value = "";
 				}
 				this.screenName.blur();
+				this._screenNameOwnerID = model.id;
 			}
 
 			css.add(this.screenSize.domNode, 'MatcHidden')
