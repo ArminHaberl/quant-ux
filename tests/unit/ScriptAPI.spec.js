@@ -210,7 +210,7 @@ describe('ScriptAPI animate()', () => {
         const deltas = api.getAppDeltas()
         expect(deltas.length).toBe(1)
         expect(deltas[0]).toEqual({
-            type: 'WidgetAnimation', id: 'w1', animation: 'fadeIn', duration: 500
+            type: 'WidgetAnimation', id: 'w1', animation: 'fadeIn', duration: 500, delay: 0
         })
     })
 
@@ -218,6 +218,28 @@ describe('ScriptAPI animate()', () => {
         const { api, screen } = setup()
         screen.getWidget('b').animate('fadeOut')
         expect(api.getAppDeltas()[0].duration).toBe(300)
+    })
+
+    /**
+     * An animation with no delay has to start exactly when it did before delay
+     * was an option, which is the whole of the default's job.
+     */
+    test('defaults the delay to no delay at all', () => {
+        const { api, screen } = setup()
+        screen.getWidget('b').animate('fadeIn')
+        expect(api.getAppDeltas()[0].delay).toBe(0)
+    })
+
+    test('records a delay asked for on a widget', () => {
+        const { api, screen } = setup()
+        screen.getWidget('b').animate('fadeIn', { delay: 1000 })
+        expect(api.getAppDeltas()[0].delay).toBe(1000)
+    })
+
+    test('records a delay asked for on a group', () => {
+        const { api, screen } = setup()
+        screen.getGroup('g').animate('reveal', { delay: 250 })
+        expect(api.getAppDeltas()[0].delay).toBe(250)
     })
 
     /**
@@ -261,7 +283,7 @@ describe('ScriptAPI animate()', () => {
         const deltas = api.getAppDeltas()
         expect(deltas.length).toBe(1)
         expect(deltas[0]).toEqual({
-            type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: 120, order: 'screen'
+            type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, delay: 0, step: 120, order: 'screen'
         })
     })
 
@@ -310,6 +332,120 @@ describe('ScriptAPI animate()', () => {
         const { api, screen } = setup()
         screen.getWidget('b').animate('fadeIn')
         expect(api.getAppDeltas()[0].order).toBeUndefined()
+    })
+
+    /**
+     * A widget has one element and nothing to stagger, so step is not its
+     * option. It was always ignored, so it is still ignored rather than
+     * rejected, which would only break scripts that happen to pass it.
+     */
+    test('a widget animation ignores a step', () => {
+        const { api, screen } = setup()
+        screen.getWidget('b').animate('fadeIn', { step: 50 })
+        expect(api.getAppDeltas()[0].step).toBeUndefined()
+    })
+
+    describe('the millisecond options', () => {
+
+        /**
+         * All three mean the same kind of thing, so all three are resolved by
+         * one rule: absent takes the default, a number is taken as it is, and
+         * anything else is refused. Step is a group option only, so it is
+         * checked on a group.
+         */
+        const bad = ['-1', 'soon', NaN, Infinity]
+        const onWidget = ['delay', 'duration']
+        const onGroup = ['delay', 'duration', 'step']
+        onWidget.forEach(key => {
+            bad.forEach(value => {
+                test(`refuses a ${key} of ${value} on a widget`, () => {
+                    const { screen } = setup()
+                    expect(() => screen.getWidget('b').animate('fadeIn', { [key]: value }))
+                        .toThrow(new RegExp(`Invalid ${key} "${value}"`))
+                })
+            })
+        })
+        onGroup.forEach(key => {
+            bad.forEach(value => {
+                test(`refuses a ${key} of ${value} on a group`, () => {
+                    const { screen } = setup()
+                    expect(() => screen.getGroup('g').animate('reveal', { [key]: value }))
+                        .toThrow(new RegExp(`Invalid ${key} "${value}"`))
+                })
+            })
+        })
+
+        /**
+         * Scripts build their options out of data bindings, so a number can
+         * arrive as a string and still has to work.
+         */
+        test('accepts a number that arrived as a string', () => {
+            const { api, screen } = setup()
+            screen.getGroup('g').animate('reveal', { delay: '400', duration: '250', step: '75' })
+            const delta = api.getAppDeltas()[0]
+            expect([delta.delay, delta.duration, delta.step]).toEqual([400, 250, 75])
+        })
+
+        /**
+         * Zero is the snap that Animation.run() and toDuration() already take,
+         * so it is a value and not a missing one.
+         */
+        test('accepts a zero delay, which means start now', () => {
+            const { api, screen } = setup()
+            screen.getWidget('b').animate('fadeIn', { delay: 0 })
+            expect(api.getAppDeltas()[0].delay).toBe(0)
+        })
+
+        test('accepts a zero step, which means no stagger', () => {
+            const { api, screen } = setup()
+            screen.getGroup('g').animate('reveal', { step: 0 })
+            expect(api.getAppDeltas()[0].step).toBe(0)
+        })
+
+        test('takes an explicit null as no option at all', () => {
+            const { api, screen } = setup()
+            screen.getGroup('g').animate('reveal', { delay: null, duration: null, step: null })
+            const delta = api.getAppDeltas()[0]
+            expect([delta.delay, delta.duration, delta.step]).toEqual([0, 300, 60])
+        })
+
+        /**
+         * The name of the animation is what the script is asking for, so it is
+         * the first thing to complain about.
+         */
+        test('complains about the animation before the options', () => {
+            const { screen } = setup()
+            expect(() => screen.getGroup('g').animate('zoomIn', { delay: -1 }))
+                .toThrow(/Unknown animation/)
+        })
+
+        /**
+         * Refusing an option must not leave a half built delta behind, because
+         * animate() is additive and every earlier call in the script still runs.
+         */
+        test('a refused option records nothing', () => {
+            const { api, screen } = setup()
+            const group = screen.getGroup('g')
+            group.animate('fadeIn')
+            expect(() => group.animate('reveal', { delay: -5 })).toThrow()
+            expect(api.getAppDeltas().length).toBe(1)
+        })
+
+        /**
+         * A script error reaches the author as a message, so it has to name the
+         * option and say what a usable one looks like.
+         */
+        test('the message says what a usable value is', () => {
+            const { screen } = setup()
+            expect(() => screen.getWidget('b').animate('fadeIn', { delay: 'soon' }))
+                .toThrow(/number of milliseconds, zero or more/)
+        })
+
+        test('a screen still refuses to animate before it looks at any option', () => {
+            const { screen } = setup()
+            expect(() => screen.animate('fadeIn', { delay: -1 })).toThrow(/not supported on a screen/)
+        })
+
     })
 
     test('defaults the per child step', () => {

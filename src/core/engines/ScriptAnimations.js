@@ -159,19 +159,38 @@ export function applyScriptAnimation (model, renderFactory, animationFactory, ch
     return null
 }
 
+/**
+ * How long after the trigger an animation starts, in milliseconds.
+ *
+ * The lenient counterpart to ScriptAPI's numberOption(). A delta arrives here
+ * either from a script, which has already had its options checked, or from a
+ * recording, and collectScriptAnimations() stores the raw delta, so a recording
+ * made before delay existed carries no value at all and one made by hand can
+ * carry anything. Neither is worth throwing over on a playback path: the delay
+ * is clamped to 0 and the animation runs as it always did.
+ */
+function getDelay (change) {
+    const delay = change.delay * 1
+    if (!isFinite(delay) || delay < 0) {
+        return 0
+    }
+    return delay
+}
+
 export function applyWidgetAnimation (model, renderFactory, animationFactory, change) {
+    const delay = getDelay(change)
     if (change.animation === 'fadeIn') {
-        return fadeIn(model, renderFactory, animationFactory, change.id, change.duration, 0)
+        return fadeIn(model, renderFactory, animationFactory, change.id, change.duration, delay)
     }
     if (change.animation === 'fadeOut') {
-        return fadeOut(model, renderFactory, animationFactory, change.id, change.duration)
+        return fadeOut(model, renderFactory, animationFactory, change.id, change.duration, delay)
     }
     if (change.animation === 'typewriter') {
         /**
          * A single element, so there is nothing to stagger and a label types
          * while anything else just fades in.
          */
-        return typewriter(model, renderFactory, animationFactory, change.id, change.duration, 0)
+        return typewriter(model, renderFactory, animationFactory, change.id, change.duration, delay)
     }
     Logger.warn('ScriptAnimations > unknown widget animation ' + change.animation)
     return []
@@ -222,10 +241,14 @@ function typewriter (model, renderFactory, animationFactory, id, duration, delay
  * the only thing to animate is each child. Every animation is therefore the same
  * fan out, and only the per child delay differs:
  *
- *   fadeIn     delay 0
- *   fadeOut    no delay, and each child ends hidden
- *   reveal     delay of index * step, everything fades up
+ *   fadeIn     no stagger, everything fades up together
+ *   fadeOut    no stagger, everything fades down and each child ends hidden
+ *   reveal     staggered by step, everything fades up
  *   typewriter same as reveal, but a label types its text instead of fading
+ *
+ * On top of that the delta carries the delay before the whole animation, which
+ * is added to every child's stagger rather than replacing it: child i starts at
+ * delay plus i * step.
  *
  * The index is into the children in the order the delta asks for, which
  * QGroup.animate() sets and ModelUtil.getOrderedGroupChildren() resolves: screen
@@ -257,6 +280,12 @@ export function applyGroupAnimation (model, renderFactory, animationFactory, cha
     const hiding = change.animation === 'fadeOut'
     const typing = change.animation === 'typewriter'
     const staggered = change.animation === 'reveal' || typing
+    /**
+     * The delay before the whole animation, added to the stagger rather than
+     * replacing it, so a delayed reveal starts its first child after the delay
+     * and its last one after the delay plus the whole stagger.
+     */
+    const before = getDelay(change)
 
     for (let i = 0; i < children.length; i++) {
         const id = children[i]
@@ -264,9 +293,9 @@ export function applyGroupAnimation (model, renderFactory, animationFactory, cha
             missing.push(id)
             continue
         }
-        const delay = staggered ? i * change.step : 0
+        const delay = before + (staggered ? i * change.step : 0)
         if (hiding) {
-            scheduled.push.apply(scheduled, fadeOut(model, renderFactory, animationFactory, id, change.duration))
+            scheduled.push.apply(scheduled, fadeOut(model, renderFactory, animationFactory, id, change.duration, delay))
         } else if (typing) {
             scheduled.push.apply(scheduled, typewriter(model, renderFactory, animationFactory, id, change.duration, delay))
         } else {
@@ -279,6 +308,11 @@ export function applyGroupAnimation (model, renderFactory, animationFactory, cha
          * Only the widgets of the rendered screen have a wrapper. clearUiWidgets
          * empties _uiWidgets, _widgetNodes and _widgetModels together, so a widget
          * on another screen has none of the three and cannot be animated.
+         *
+         * The fallback is an instant change even when the animation was delayed.
+         * Waiting it out would mean a timer here, in a module that is otherwise
+         * synchronous and needs no jsdom, and there is nothing on screen to see
+         * it happen to.
          */
         Logger.warn('ScriptAnimations > cannot animate, not on the current screen: ' + missing.join(', '))
         const display = hiding ? 'none' : 'block'
@@ -326,12 +360,12 @@ function fadeIn (model, renderFactory, animationFactory, id, duration, delay) {
  * only updated in onEnd, once that has happened, so isHidden(), toggle() and
  * the exported CSS stay in step with what the user sees.
  */
-function fadeOut (model, renderFactory, animationFactory, id, duration) {
+function fadeOut (model, renderFactory, animationFactory, id, duration, delay) {
     const uiWidget = renderFactory.getAnimationWrapper(id)
     if (!uiWidget) {
         Logger.warn('ScriptAnimations > cannot animate, not on the current screen: ' + id)
         writeStyle(model, renderFactory, id, { display: 'none' })
-        return [{ id: id, animation: 'fadeOut', duration: duration, animated: false }]
+        return [{ id: id, animation: 'fadeOut', duration: duration, delay: delay, animated: false }]
     }
 
     return run(animationFactory, uiWidget, {
@@ -340,7 +374,7 @@ function fadeOut (model, renderFactory, animationFactory, id, duration) {
         from: { style: { opacity: 1 } },
         to: { style: { opacity: 0 } },
         duration: duration,
-        delay: 0
+        delay: delay
     }, function () {
         writeStyle(model, renderFactory, id, { display: 'none' })
     })

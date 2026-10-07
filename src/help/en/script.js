@@ -311,7 +311,8 @@ group.toggle()
                 <b>toggle()</b> only shows the group again once all of its elements are hidden.
 
                 <p class="MatcHelpCallout">
-                    Only fades are available as an animation, on both widgets and groups.
+                    These three change the visibility straight away. To change it over time,
+                    with a pause first, use <b>animate()</b> below.
                 </p>
                   
                 `
@@ -370,6 +371,27 @@ group.animate('reveal', {duration: 300, step: 80, order: 'model'})
                 shows that order or lets you change it, so it is only worth using when
                 the screen order is not the one you want.
 
+                Any of these animations can also wait before it starts, with
+                <b>delay</b>:
+
+                <pre class="MatcHelpCode">
+let group = qux.getScreen('Screen').getGroup('Reply')
+group.animate('reveal', {delay: 1000, duration: 300, step: 80})
+                </pre>
+
+                <b>delay</b> is the pause before the animation begins, so the reveal above
+                starts a second from now and finishes about a second and a quarter in.
+                It is not the same as <b>step</b>, which is the pause between the
+                elements of the animation itself, and not the same as
+                <b>duration</b>, which is how long one element takes. It works on a
+                single element too, where it is the only one of the three that applies.
+
+                <p class="MatcHelpCallout">
+                    The delay is measured from the moment the script asks for the animation.
+                    Two calls in the same script both count from there, so a later call with
+                    a longer delay happens last.
+                </p>
+
                 <p class="MatcHelpCallout">
                     The reveal fades in one element at a time. It reveals the elements of the
                     group rather than the letters inside them, and every run looks the same.
@@ -408,7 +430,9 @@ group.animate('typewriter', {duration: 2000, step: 150})
 
                 <b>duration</b> is how long the whole thing takes. The labels take that long
                 to type and the other elements take that long to fade in, so one number
-                covers both.
+                covers both. Add <b>delay</b> to have the whole group wait before it
+                starts, and <b>step</b> to keep the elements from all starting at the
+                same moment.
 
                 <p class="MatcHelpCallout">
                     Leave <b>duration</b> out and each label types at the speed set in its own

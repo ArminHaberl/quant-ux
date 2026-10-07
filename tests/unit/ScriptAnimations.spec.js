@@ -125,6 +125,75 @@ describe('ScriptAnimations widget fades', () => {
     })
 
     /**
+     * The delay goes on the tween event, where the animation engine already
+     * knows how to wait it out. There is no timer in this module and the delay
+     * must not become one.
+     */
+    test('a delay reaches the tween of a fade in', () => {
+        const h = harness({ live: ['w1'], autoEnd: true })
+        ScriptAnimations.applyWidgetAnimation(h.model, h.renderFactory, h.animationFactory,
+            { type: 'WidgetAnimation', id: 'w1', animation: 'fadeIn', duration: 300, delay: 750 })
+        expect(h.events.map(e => e.event.delay)).toEqual([750])
+    })
+
+    /**
+     * A fade out has no delay of its own and used to hardcode zero, so this is
+     * the case that would silently ignore the option.
+     */
+    test('a delay reaches the tween of a fade out', () => {
+        const h = harness({ live: ['w1'], autoEnd: true })
+        ScriptAnimations.applyWidgetAnimation(h.model, h.renderFactory, h.animationFactory,
+            { type: 'WidgetAnimation', id: 'w1', animation: 'fadeOut', duration: 300, delay: 750 })
+        expect(h.events.map(e => e.event.delay)).toEqual([750])
+    })
+
+    test('a delay reaches the typing of a typewriter', () => {
+        const h = harness({ live: ['w1'], labels: { w1: 'Hi' }, autoEnd: true })
+        ScriptAnimations.applyWidgetAnimation(h.model, h.renderFactory, h.animationFactory,
+            { type: 'WidgetAnimation', id: 'w1', animation: 'typewriter', duration: 300, delay: 400 })
+        expect(h.typed.map(t => t.delay)).toEqual([400])
+    })
+
+    /**
+     * A recording made before delay existed carries no value. It must not become
+     * NaN, which the engine would read as an animation that never runs.
+     */
+    test('a widget animation with no delay field is not delayed', () => {
+        const h = harness({ live: ['w1'], autoEnd: true })
+        ScriptAnimations.applyWidgetAnimation(h.model, h.renderFactory, h.animationFactory,
+            { type: 'WidgetAnimation', id: 'w1', animation: 'fadeIn', duration: 300 })
+        expect(h.events.map(e => e.event.delay)).toEqual([0])
+    })
+
+    test('an unusable delay on a recording is treated as no delay', () => {
+        const unusable = [-1, 'soon', NaN, undefined]
+        unusable.forEach(delay => {
+            const h = harness({ live: ['w1'], autoEnd: true })
+            ScriptAnimations.applyWidgetAnimation(h.model, h.renderFactory, h.animationFactory,
+                { type: 'WidgetAnimation', id: 'w1', animation: 'fadeIn', duration: 300, delay: delay })
+            expect(h.events.map(e => e.event.delay)).toEqual([0])
+        })
+    })
+
+    /**
+     * A widget that cannot be animated reports what it would have done, so a
+     * delayed one has to carry the delay in its report too.
+     */
+    test('an undelayed widget that cannot be animated reports no delay', () => {
+        const h = harness({ autoEnd: true })
+        const scheduled = ScriptAnimations.applyWidgetAnimation(h.model, h.renderFactory, h.animationFactory,
+            { type: 'WidgetAnimation', id: 'w1', animation: 'fadeIn', duration: 300 })
+        expect(scheduled.map(s => s.delay)).toEqual([0])
+    })
+
+    test('a widget that cannot be animated reports its delay', () => {
+        const h = harness({ autoEnd: true })
+        const scheduled = ScriptAnimations.applyWidgetAnimation(h.model, h.renderFactory, h.animationFactory,
+            { type: 'WidgetAnimation', id: 'w1', animation: 'fadeOut', duration: 300, delay: 600 })
+        expect(scheduled.map(s => s.delay)).toEqual([600])
+    })
+
+    /**
      * opacity:0 in the model would re-hide the element on every re-render, since
      * _set_opacity adds MatcHidden, which is display:none, at exactly zero.
      */
@@ -231,6 +300,14 @@ describe('ScriptAnimations group animations', () => {
     }
 
     /**
+     * The delay before the whole animation, which is added to the stagger.
+     */
+    function revealAfter(h, step, delay) {
+        return ScriptAnimations.applyGroupAnimation(h.model, h.renderFactory, h.animationFactory,
+            { type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: step, delay: delay })
+    }
+
+    /**
      * The regression that made the first version of this snap instead of fading:
      * the group path passed the duration straight through as undefined.
      */
@@ -254,6 +331,64 @@ describe('ScriptAnimations group animations', () => {
         const h = harness({ live: ['w1', 'w2', 'w3'], autoEnd: true })
         reveal(h, 80)
         expect(h.events.map(e => e.event.delay)).toEqual([0, 80, 160])
+    })
+
+    /**
+     * delay is how long after the trigger the whole reveal begins, so it shifts
+     * every child rather than only the later ones. The first child is the one
+     * that gets it alone, and it would be the interesting failure if the delay
+     * were applied on top of the stagger rather than added to it.
+     */
+    test('a delay shifts every child of a reveal', () => {
+        const h = harness({ live: ['w1', 'w2', 'w3'], autoEnd: true })
+        revealAfter(h, 80, 500)
+        expect(h.events.map(e => e.event.delay)).toEqual([500, 580, 660])
+    })
+
+    test('a delay without a stagger still holds the whole group back', () => {
+        const h = harness({ live: ['w1', 'w2', 'w3'], autoEnd: true })
+        ScriptAnimations.applyGroupAnimation(h.model, h.renderFactory, h.animationFactory,
+            { type: 'GroupAnimation', id: 'g1', animation: 'fadeIn', duration: 300, step: 80, delay: 500 })
+        expect(h.events.map(e => e.event.delay)).toEqual([500, 500, 500])
+    })
+
+    /**
+     * A recording made before delay existed carries no value at all. It must
+     * start immediately, not at NaN.
+     */
+    test('a reveal with no delay field is not delayed', () => {
+        const h = harness({ live: ['w1', 'w2', 'w3'], autoEnd: true })
+        reveal(h, 80)
+        expect(h.events.map(e => e.event.delay)).toEqual([0, 80, 160])
+    })
+
+    /**
+     * The API refuses a bad delay, but a recorded delta can carry anything and
+     * there is no script to fail on a playback path.
+     */
+    test('an unusable delay on a recording is treated as no delay', () => {
+        const unusable = [-1, 'soon', NaN, undefined]
+        unusable.forEach(delay => {
+            const h = harness({ live: ['w1', 'w2', 'w3'], autoEnd: true })
+            revealAfter(h, 80, delay)
+            expect(h.events.map(e => e.event.delay)).toEqual([0, 80, 160])
+        })
+    })
+
+    /**
+     * The fallback for a child that is not on the current screen is an instant
+     * change, and there is no timer here to wait a delay out. Nothing on screen
+     * renders it, so it is not worth introducing one for.
+     */
+    test('a child that is not on the screen is still shown immediately', () => {
+        const h = harness({ live: ['w2'], autoEnd: true })
+        revealAfter(h, 80, 500)
+        /**
+         * w2 is the second child, so it waits the delay and its own stagger.
+         */
+        expect(h.events.map(e => e.event.delay)).toEqual([580])
+        expect(h.model.widgets.w1.style.display).toBe('block')
+        expect(h.model.widgets.w3.style.display).toBe('block')
     })
 
     test('a reveal keeps the model order, not the live order', () => {

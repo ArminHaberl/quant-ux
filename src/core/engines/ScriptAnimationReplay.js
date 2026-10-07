@@ -50,8 +50,9 @@ export function getEventAnimations (event) {
  *
  * A delta with no order was recorded before QGroup.animate() wrote one, and has
  * to keep the declaration order it was made with rather than pick up the screen
- * order a newer API defaults to. Same helper, same fallback, so the live run and
- * the replay cannot drift apart.
+ * order a newer API defaults to. Same for a delta with no delay, which is 0 and
+ * not an error. Same helper, same fallbacks, so the live run and the replay
+ * cannot drift apart.
  *
  * Unknown animations are skipped for a widget, because applyWidgetAnimation()
  * refuses to run them either. A group is different: applyGroupAnimation()
@@ -76,6 +77,11 @@ export function expandAnimations (model, animations) {
             }
             const children = ModelUtil.getOrderedGroupChildren(group, model, change.order)
             const staggered = change.animation === 'reveal' || change.animation === 'typewriter'
+            /**
+             * The delay before the whole animation, added to the stagger, which
+             * is what applyGroupAnimation() does with it.
+             */
+            const before = toNumber(change.delay, 0)
             children.forEach((id, index) => {
                 if (!widgets || !widgets[id]) {
                     return
@@ -84,7 +90,7 @@ export function expandAnimations (model, animations) {
                     id: id,
                     animation: change.animation,
                     duration: duration,
-                    delay: staggered ? index * step : 0
+                    delay: before + (staggered ? index * step : 0)
                 })
             })
             return
@@ -105,10 +111,10 @@ export function expandAnimations (model, animations) {
             animation: change.animation,
             duration: duration,
             /**
-             * The API writes no delay for a single element; only a group
-             * staggers. Kept as a field so the shape is the same for both.
+             * The delay before the whole animation, which for a single element
+             * is all there is: there is no stagger to add to it.
              */
-            delay: 0
+            delay: toNumber(change.delay, 0)
         })
     })
     return schedules
@@ -174,9 +180,19 @@ function isWidgetAnimation (animation) {
     return animation === 'fadeIn' || animation === 'fadeOut' || animation === 'typewriter'
 }
 
+/**
+ * A millisecond count out of a delta, or the fallback when it is not usable.
+ *
+ * Everything this reads is a "milliseconds, zero or more" option, so a negative
+ * is as unusable as a NaN and is dropped for the same reason. Keeping it would
+ * make the delay push getProgress() past its own progress and render the end
+ * value in a single frame, and, worse, would leave the replay disagreeing with
+ * the live run: ScriptAnimations.getDelay() clamps a negative to zero, so a
+ * delta that kept it here would play back a sequence the live run never had.
+ */
 function toNumber (value, fallback) {
     const number = value * 1
-    if (!isFinite(number)) {
+    if (!isFinite(number) || number < 0) {
         return fallback
     }
     return number

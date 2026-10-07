@@ -225,6 +225,95 @@ describe('ScriptAnimationReplay.expandAnimations', () => {
     })
 
     /**
+     * The delay before the whole animation. The player already offsets the
+     * animation frames within an event by schedule.delay, so this is all it
+     * takes for a delayed animation to replay, and no player change with it.
+     */
+    test('a delay before the whole group shifts every schedule', () => {
+        const schedules = expandAnimations(createModel(), [
+            { type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: 60, delay: 500 }
+        ])
+        expect(schedules.map(s => s.delay)).toEqual([500, 560, 620])
+    })
+
+    test('a delay on a single widget is its schedule delay', () => {
+        const schedules = expandAnimations(createModel(), [
+            { type: 'WidgetAnimation', id: 'w1', animation: 'fadeIn', duration: 300, delay: 900 }
+        ])
+        expect(schedules.map(s => s.delay)).toEqual([900])
+    })
+
+    test('a delay without a stagger holds the whole group back', () => {
+        const schedules = expandAnimations(createModel(), [
+            { type: 'GroupAnimation', id: 'g1', animation: 'fadeIn', duration: 300, step: 60, delay: 500 }
+        ])
+        expect(schedules.map(s => s.delay)).toEqual([500, 500, 500])
+    })
+
+    /**
+     * A recording made before delay existed carries no value. It must replay as
+     * it did, not at NaN.
+     */
+    test('a delta with no delay replays as no delay', () => {
+        const schedules = expandAnimations(createModel(), [
+            { type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: 60 },
+            { type: 'WidgetAnimation', id: 'w1', animation: 'fadeIn', duration: 300 }
+        ])
+        expect(schedules.map(s => [s.id, s.delay])).toEqual([['w1', 0], ['w2', 60], ['w3', 120], ['w1', 0]])
+    })
+
+    test('an unusable delay on a recording replays as no delay', () => {
+        const unusable = [-1, 'soon', NaN, undefined]
+        unusable.forEach(delay => {
+            const schedules = expandAnimations(createModel(), [
+                { type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: 60, delay: delay }
+            ])
+            expect(schedules.map(s => s.delay)).toEqual([0, 60, 120])
+        })
+    })
+
+    /**
+     * The live run and the replay are two implementations of one fan out, and a
+     * delay has to be added to the stagger on both sides in the same place.
+     */
+    test('the replay and the live run schedule the same delayed reveal', () => {
+        const model = createModel()
+        placeChildren(model, { w1: { x: 30, y: 300 }, w2: { x: 0, y: 100 }, w3: { x: 10, y: 200 } })
+        const delta = {
+            type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: 70, delay: 400, order: 'screen'
+        }
+
+        const scheduled = applyGroupAnimation(model, liveRenderFactory(model), liveAnimationFactory(), delta)
+        const replayed = expandAnimations(model, [delta])
+
+        expect(replayed.map(s => [s.id, s.delay])).toEqual(scheduled.map(s => [s.id, s.delay]))
+        /**
+         * Pinned as well, so the comparison above cannot pass by both sides
+         * being wrong in the same way.
+         */
+        expect(replayed.map(s => s.delay)).toEqual([400, 470, 540])
+    })
+
+    /**
+     * The original defect this file already had a guard against, reached a
+     * second way: getDelay() clamped an unusable delay to 0 on the live side
+     * while toNumber() kept a negative one, so a hand made or edited recording
+     * played back a sequence the live run could not have produced.
+     */
+    test('the replay and the live run agree on an unusable delay', () => {
+        const unusable = [-1, 'soon', NaN, undefined]
+        unusable.forEach(delay => {
+            const model = createModel()
+            const delta = { type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: 60, delay: delay }
+
+            const scheduled = applyGroupAnimation(model, liveRenderFactory(model), liveAnimationFactory(), delta)
+            const replayed = expandAnimations(model, [delta])
+
+            expect(replayed.map(s => [s.id, s.delay])).toEqual(scheduled.map(s => [s.id, s.delay]))
+        })
+    })
+
+    /**
      * applyWidgetAnimation() refuses to run an animation it does not know, so
      * a replay that faded anyway would show something the live run never did.
      */
