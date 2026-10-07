@@ -261,8 +261,55 @@ describe('ScriptAPI animate()', () => {
         const deltas = api.getAppDeltas()
         expect(deltas.length).toBe(1)
         expect(deltas[0]).toEqual({
-            type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: 120
+            type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: 120, order: 'screen'
         })
+    })
+
+    /**
+     * The order goes on the delta rather than being resolved once, because a
+     * recording is replayed later against whatever model is current and has to
+     * keep the order it was made with.
+     */
+    test('records the order a group reveal was asked for', () => {
+        const { api, screen } = setup()
+        screen.getGroup('g').animate('reveal', { order: 'model' })
+        expect(api.getAppDeltas()[0].order).toBe('model')
+    })
+
+    /**
+     * The order the children were added to the group in is neither shown on the
+     * canvas nor changeable on it, so it cannot be the default. Screen order is
+     * the one the author can see.
+     */
+    test('defaults a group reveal to the screen order', () => {
+        const { api, screen } = setup()
+        screen.getGroup('g').animate('reveal')
+        expect(api.getAppDeltas()[0].order).toBe('screen')
+    })
+
+    test('records the order on every group animation, staggered or not', () => {
+        const { api, screen } = setup()
+        const group = screen.getGroup('g')
+        group.animate('fadeIn')
+        group.animate('fadeOut')
+        group.animate('typewriter')
+        expect(api.getAppDeltas().map(d => d.order)).toEqual(['screen', 'screen', 'screen'])
+    })
+
+    test('refuses an order it cannot resolve', () => {
+        const { screen } = setup()
+        expect(() => screen.getGroup('g').animate('reveal', { order: 'zOrder' }))
+            .toThrow(/Unknown order "zOrder".*model, screen/)
+    })
+
+    /**
+     * A widget has one element and nothing to order against, so it takes no
+     * order at all.
+     */
+    test('a widget animation carries no order', () => {
+        const { api, screen } = setup()
+        screen.getWidget('b').animate('fadeIn')
+        expect(api.getAppDeltas()[0].order).toBeUndefined()
     })
 
     test('defaults the per child step', () => {

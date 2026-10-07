@@ -17,13 +17,19 @@ function harness(options) {
      */
     const labels = opts.labels || {}
     const boxes = opts.boxes || []
+    /**
+     * Coordinates for the screen order. Left out by default, which is how a
+     * model that never went through the canvas looks: a widget with no x or y
+     * compares equal to every other one and keeps the declaration order.
+     */
+    const positions = opts.positions || {}
 
     const model = {
         screens: { s1: { id: 's1', name: 'a', style: {}, children: ['w1', 'w2', 'w3'] } },
         widgets: {
-            w1: { id: 'w1', name: 'one', style: {} },
-            w2: { id: 'w2', name: 'two', style: { display: 'none' } },
-            w3: { id: 'w3', name: 'three', style: {} }
+            w1: { id: 'w1', name: 'one', style: {}, x: positions.w1 ? positions.w1.x : undefined, y: positions.w1 ? positions.w1.y : undefined },
+            w2: { id: 'w2', name: 'two', style: { display: 'none' }, x: positions.w2 ? positions.w2.x : undefined, y: positions.w2 ? positions.w2.y : undefined },
+            w3: { id: 'w3', name: 'three', style: {}, x: positions.w3 ? positions.w3.x : undefined, y: positions.w3 ? positions.w3.y : undefined }
         },
         groups: { g1: { id: 'g1', name: 'g', children: ['w1', 'w2', 'w3'] } }
     }
@@ -215,6 +221,16 @@ describe('ScriptAnimations group animations', () => {
     }
 
     /**
+     * The order is on the delta because a recording has to replay in the order
+     * it was made with. A delta without one is a recording made before
+     * QGroup.animate() wrote it, and keeps the declaration order.
+     */
+    function revealIn(h, step, order) {
+        return ScriptAnimations.applyGroupAnimation(h.model, h.renderFactory, h.animationFactory,
+            { type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: step, order: order })
+    }
+
+    /**
      * The regression that made the first version of this snap instead of fading:
      * the group path passed the duration straight through as undefined.
      */
@@ -244,6 +260,74 @@ describe('ScriptAnimations group animations', () => {
         const h = harness({ live: ['w1', 'w2', 'w3'], autoEnd: true })
         reveal(h, 60)
         expect(h.events.map(e => e.widget)).toEqual(['w1', 'w2', 'w3'])
+    })
+
+    /**
+     * The original defect: the index a reveal staggered by was the position in
+     * model.groups[id].children, which is the order the widgets were added to
+     * the group. LayerUtil.getGroupChanges() case 2 leaves that array alone when
+     * a child is reordered within its group, and LayerList shows a group's
+     * children in reverse z, so it matched neither the canvas nor the layer
+     * list. The group below declares its bottom widget first.
+     */
+    test('a reveal in screen order staggers by position on the screen', () => {
+        const h = harness({
+            live: ['w1', 'w2', 'w3'],
+            autoEnd: true,
+            positions: { w1: { x: 0, y: 300 }, w2: { x: 0, y: 100 }, w3: { x: 0, y: 200 } }
+        })
+        revealIn(h, 80, 'screen')
+        expect(h.events.map(e => e.widget)).toEqual(['w2', 'w3', 'w1'])
+        expect(h.events.map(e => e.event.delay)).toEqual([0, 80, 160])
+    })
+
+    test('a reveal in screen order runs left to right within a line', () => {
+        const h = harness({
+            live: ['w1', 'w2', 'w3'],
+            autoEnd: true,
+            positions: { w1: { x: 300, y: 100 }, w2: { x: 100, y: 100 }, w3: { x: 200, y: 100 } }
+        })
+        revealIn(h, 60, 'screen')
+        expect(h.events.map(e => e.widget)).toEqual(['w2', 'w3', 'w1'])
+    })
+
+    test('a reveal asked for the model order ignores the coordinates', () => {
+        const h = harness({
+            live: ['w1', 'w2', 'w3'],
+            autoEnd: true,
+            positions: { w1: { x: 0, y: 300 }, w2: { x: 0, y: 100 }, w3: { x: 0, y: 200 } }
+        })
+        revealIn(h, 60, 'model')
+        expect(h.events.map(e => e.widget)).toEqual(['w1', 'w2', 'w3'])
+    })
+
+    /**
+     * Widgets that never went through the canvas carry no coordinates. They have
+     * to compare equal rather than hand a NaN to the sort, or the order would
+     * depend on the engine and the delays with it.
+     */
+    test('a reveal in screen order keeps the model order without coordinates', () => {
+        const h = harness({ live: ['w1', 'w2', 'w3'], autoEnd: true })
+        revealIn(h, 60, 'screen')
+        expect(h.events.map(e => e.widget)).toEqual(['w1', 'w2', 'w3'])
+        expect(h.events.map(e => e.event.delay)).toEqual([0, 60, 120])
+    })
+
+    /**
+     * Only the rendered screen has an animation wrapper, so a child on another
+     * screen cannot be tweened. It still has to keep its place in the stagger,
+     * or the widgets behind it would jump forward a step whenever a screen was
+     * entered from somewhere else.
+     */
+    test('a child that is not on the screen keeps its place in the stagger', () => {
+        const h = harness({
+            live: ['w1', 'w3'],
+            autoEnd: true,
+            positions: { w1: { x: 0, y: 300 }, w2: { x: 0, y: 100 }, w3: { x: 0, y: 200 } }
+        })
+        revealIn(h, 80, 'screen')
+        expect(h.events.map(e => e.widget)).toEqual(['w3', 'w1'])
+        expect(h.events.map(e => e.event.delay)).toEqual([80, 160])
     })
 
     test('a reveal makes every child visible', () => {

@@ -355,6 +355,21 @@ group.animate('reveal', {duration: 300, step: 80})
                 <b>step</b> is the pause between two elements, so the group above finishes
                 revealing after about a quarter of a second. Both options are optional.
 
+                The elements are revealed from the top of the group downwards, and from
+                left to right where they sit on the same line. That is the order you see
+                them in, so the reveal reads the way the group looks. Two elements at the
+                same spot reveal in the order they were added to the group.
+
+                <pre class="MatcHelpCode">
+let group = qux.getScreen('Screen').getGroup('Reply')
+group.animate('reveal', {duration: 300, step: 80, order: 'model'})
+                </pre>
+
+                With <b>order: 'model'</b> the elements go in the order the group holds
+                them, which is the order they were added to it. Nothing on the canvas
+                shows that order or lets you change it, so it is only worth using when
+                the screen order is not the one you want.
+
                 <p class="MatcHelpCallout">
                     The reveal fades in one element at a time. It reveals the elements of the
                     group rather than the letters inside them, and every run looks the same.

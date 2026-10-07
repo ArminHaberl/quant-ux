@@ -28,7 +28,7 @@ five root configs are baked in (`Dockerfile:66-73`). So:
 - A test that needs a new root-level config file needs it added to that
   stage's `COPY` or it will silently be missing inside the container.
 
-Green baseline: **74 suites / 511 tests**, lint 0. Report those numbers in
+Green baseline: **74 suites / 538 tests**, lint 0. Report those numbers in
 commit messages. These go stale as suites land — if `make test` disagrees,
 the doc is the wrong half; `git stash -u && make test` gives the real
 baseline. Slow suites: `tSNE`, `Outlier*`, `Analytics`.
@@ -145,7 +145,7 @@ empty div.
   imports and variables are still errors.
 - Commit subjects follow conventional commits. The body is the house style:
   the defect in past tense, the mechanism, the files touched, then the
-  verification line (`Tests: 74/74 suites, 511/511 pass`, `Lint: 0`). Read
+  verification line (`Tests: 74/74 suites, 538/538 pass`, `Lint: 0`). Read
   `git log -1 --format=%B` before writing one. The `package.json` version is
   deliberately never bumped.
 

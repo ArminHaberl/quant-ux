@@ -126,10 +126,11 @@ function getAnimationDisplayChanges (model, change) {
             return []
         }
         /**
-         * The same fan out as applyGroupAnimation(), including the flattening
-         * of sub groups, so what is recorded matches what was animated.
+         * The same fan out as applyGroupAnimation(), including the ordering and
+         * the flattening of sub groups, so what is recorded matches what was
+         * animated.
          */
-        ModelUtil.getAllGroupChildren(group, model).forEach(id => ids.push(id))
+        ModelUtil.getOrderedGroupChildren(group, model, change.order).forEach(id => ids.push(id))
     } else {
         ids.push(change.id)
     }
@@ -226,11 +227,18 @@ function typewriter (model, renderFactory, animationFactory, id, duration, delay
  *   reveal     delay of index * step, everything fades up
  *   typewriter same as reveal, but a label types its text instead of fading
  *
+ * The index is into the children in the order the delta asks for, which
+ * QGroup.animate() sets and ModelUtil.getOrderedGroupChildren() resolves: screen
+ * order by default, so a reveal reads top to bottom the way the group looks,
+ * and the declaration order of model.groups[id].children on request. It is not
+ * the z order, which says what covers what and is changed for layering.
+ *
  * A nested group cannot be reached: QScreen.getGroup() only returns a group
  * whose children are all direct children of the screen, so one containing a sub
- * group is not addressable from a script at all. getAllGroupChildren is used
- * anyway, which is what Controller/Group.js does, so the ordering is the model's
- * declaration order rather than anything derived here.
+ * group is not addressable from a script at all. getOrderedGroupChildren is used
+ * anyway, which is what Controller/Group.js does, so the order is either the
+ * model's declaration order or the screen order the author can see, never
+ * anything derived here.
  */
 export function applyGroupAnimation (model, renderFactory, animationFactory, change) {
     const group = model.groups ? model.groups[change.id] : null
@@ -239,7 +247,11 @@ export function applyGroupAnimation (model, renderFactory, animationFactory, cha
         return []
     }
 
-    const children = ModelUtil.getAllGroupChildren(group, model)
+    /**
+     * Sorted before the loop below, not inside it, so that a child which is not
+     * on the current screen still consumes its place in the stagger.
+     */
+    const children = ModelUtil.getOrderedGroupChildren(group, model, change.order)
     const scheduled = []
     const missing = []
     const hiding = change.animation === 'fadeOut'

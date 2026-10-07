@@ -17,6 +17,19 @@ const WIDGET_ANIMATIONS = ['fadeIn', 'fadeOut', 'typewriter']
 const GROUP_ANIMATIONS = ['fadeIn', 'fadeOut', 'reveal', 'typewriter']
 
 /**
+ * The orders a group animates its children in.
+ *
+ * 'screen' is top to bottom and then left to right, which is how the group reads
+ * on the screen. 'model' is the order model.groups[id].children declares them
+ * in, the order they were added to the group, which nothing on the canvas shows
+ * or lets you change.
+ *
+ * Resolved by ModelUtil.getOrderedGroupChildren(), and recorded on the delta so
+ * that a recording keeps the order it was made with.
+ */
+const GROUP_ORDERS = ['model', 'screen']
+
+/**
  * Explicit on every delta, never left to the animation engine.
  * Animation.defaultAnimationDuration is read in createAnimation() and in
  * Css3Animation, but assigned nowhere, so it is undefined, and run() then takes
@@ -24,6 +37,7 @@ const GROUP_ANIMATIONS = ['fadeIn', 'fadeOut', 'reveal', 'typewriter']
  */
 const DEFAULT_DURATION = 300
 const DEFAULT_STEP = 60
+const DEFAULT_GROUP_ORDER = 'screen'
 
 class QModel {
 
@@ -159,9 +173,15 @@ class QGroup extends QModel {
      *   fadeOut  every child fades down, together
      *   reveal   every child fades up, staggered by step
      *
+     * The children are staggered in the order given by `order`, 'screen' by
+     * default: top to bottom, then left to right. Pass order:'model' to go by
+     * the order the group declares its children in instead.
+     *
      * The delta carries the group id rather than the children's, because a group
      * has no DOM node of its own. Its children are siblings in the screen, so
-     * the main thread has to resolve them and work out the delays.
+     * the main thread has to resolve them and work out the delays. It carries
+     * the order as well, because a recording is replayed later against whatever
+     * model is current and has to keep the order it was made with.
      *
      * hide(), show() and toggle() need no animation to work on a group:
      * QModel routes them through setStyle, which is already overridden here to
@@ -172,12 +192,17 @@ class QGroup extends QModel {
             throw new Error(`Unknown animation "${animation}". Use one of ${GROUP_ANIMATIONS.join(', ')}.`)
         }
         const opts = options || {}
+        const order = opts.order != null ? opts.order : DEFAULT_GROUP_ORDER
+        if (GROUP_ORDERS.indexOf(order) < 0) {
+            throw new Error(`Unknown order "${order}". Use one of ${GROUP_ORDERS.join(', ')}.`)
+        }
         this.api.appDeltas.push({
             type: 'GroupAnimation',
             id: this.qModel.id,
             animation: animation,
             duration: opts.duration != null ? opts.duration : DEFAULT_DURATION,
-            step: opts.step != null ? opts.step : DEFAULT_STEP
+            step: opts.step != null ? opts.step : DEFAULT_STEP,
+            order: order
         })
     }
 

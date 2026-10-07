@@ -2,6 +2,18 @@ import lang from '../dojo/_base/lang'
 import Logger from './Logger'
 import { getContainerSuffix } from '../util/WidgetTreeUtil'
 
+/**
+ * A coordinate as a number, whatever the model happens to hold.
+ *
+ * An absent or non numeric coordinate counts as zero rather than as NaN,
+ * because NaN in a comparator hands the result to the engine's sort and two
+ * runs over one model can come out differently.
+ */
+const coordinate = value => {
+    const number = value * 1
+    return isFinite(number) ? number : 0
+}
+
 class ModelUtil {
 
     constructor() {
@@ -842,7 +854,74 @@ class ModelUtil {
         }
         return result
     }
-  
+
+    /**
+     * The children of a group in the order an animation should run them.
+     *
+     * 'model' is the declaration order of model.groups[id].children, which is
+     * the order the widgets were added to the group. That is what
+     * getAllGroupChildren() returns, and it is the answer for anything that is
+     * not 'screen'.
+     *
+     * 'screen' is top to bottom and then left to right, the order
+     * AnimationComposer.sortChildrenByY() presents its animation rows in. It is
+     * the default for a script reveal because the declaration order is neither
+     * visible nor controllable: LayerUtil.getGroupChanges() case 2 leaves
+     * model.groups[id].children untouched when a child is reordered within its
+     * group, and LayerList renders a group's children in reverse z, so the
+     * declaration order agrees with neither what the author sees on the canvas
+     * nor what the layer list shows.
+     *
+     * The x and the declaration index tiebreaks are additions to the composer's
+     * y only sort, so that this is a total order and one model always animates
+     * the same way. A widget without coordinates compares equal on both and
+     * lands on the declaration order, which is what it did before 'screen'
+     * existed.
+     *
+     * A child that is not in the model has no coordinates either, so it also
+     * counts as the origin and takes the first place. It cannot be animated
+     * anyway, but it does push everything behind it one step along.
+     *
+     * Deliberately does not mutate the model. This also runs while a recording
+     * replays, and Core.fixMissingZValue() would write to the model on the way
+     * past.
+     */
+    getOrderedGroupChildren (group, model, order) {
+        const ids = this.getAllGroupChildren(group, model)
+        if (order !== 'screen') {
+            return ids
+        }
+        const widgets = model && model.widgets ? model.widgets : {}
+        const declaration = new Map()
+        ids.forEach((id, index) => declaration.set(id, index))
+        return ids.slice(0).sort((a, b) => {
+            /**
+             * The declaration index is the final tiebreak, so an id that appears
+             * twice cannot make the order depend on the sort.
+             */
+            return this.compareWidgetPosition(a, b, widgets) ||
+                declaration.get(a) - declaration.get(b)
+        })
+    }
+
+    /**
+     * -1, 0 or 1, so it can be used as a sort comparator, and so that two
+     * widgets at the same spot are not handed to Array.sort() as a NaN.
+     */
+    compareWidgetPosition (aId, bId, widgets) {
+        const a = widgets[aId] || {}
+        const b = widgets[bId] || {}
+        const dy = coordinate(a.y) - coordinate(b.y)
+        if (dy !== 0) {
+            return dy < 0 ? -1 : 1
+        }
+        const dx = coordinate(a.x) - coordinate(b.x)
+        if (dx !== 0) {
+            return dx < 0 ? -1 : 1
+        }
+        return 0
+    }
+
 
     getTopParentGroup(model, id) {
         let group = this.getParentGroup(model, id)

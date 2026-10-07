@@ -4,6 +4,7 @@ import {
     getFrameStyle,
     getEndStyle
 } from '../../src/core/engines/ScriptAnimationReplay'
+import { applyGroupAnimation } from '../../src/core/engines/ScriptAnimations'
 
 /**
  * The player cannot be mounted by this jest config (no vue-jest transform), so
@@ -24,6 +25,34 @@ function createModel () {
             g3: { id: 'g3', name: 'outer', children: ['w1'], groups: ['g2'] },
             gone: { id: 'gone', name: 'gone', children: ['nope'] }
         }
+    }
+}
+
+/**
+ * Put the children on the canvas. createModel() leaves them off it, so that the
+ * tests which do not care about the order keep the declaration order.
+ */
+function placeChildren (model, positions) {
+    Object.keys(positions).forEach(id => {
+        model.widgets[id].x = positions[id].x
+        model.widgets[id].y = positions[id].y
+    })
+}
+
+/**
+ * The bare minimum applyGroupAnimation() needs: an animation wrapper for every
+ * widget on the rendered screen, and a factory that hands back a tween.
+ */
+function liveRenderFactory (model) {
+    return {
+        getAnimationWrapper: id => (model.widgets[id] ? { id: id } : null),
+        updateWidget: () => {}
+    }
+}
+
+function liveAnimationFactory () {
+    return {
+        createWidgetAnimation: (widget, event) => ({ run: () => {}, onEnd: () => {} })
     }
 }
 
@@ -140,6 +169,59 @@ describe('ScriptAnimationReplay.expandAnimations', () => {
         ])
         expect(schedules.map(s => s.id)).toEqual(['w1', 'w3'])
         expect(schedules.map(s => s.delay)).toEqual([0, 60])
+    })
+
+    /**
+     * The original defect: QGroup.animate() did not record an order, so
+     * expandAnimations() resolved the children in the declaration order of
+     * model.groups[id].children and every recording made before the order was
+     * added would silently switch to the screen order the API now defaults to.
+     * A recording has to keep the order it was made with.
+     */
+    test('a recording without an order replays in the declaration order', () => {
+        const model = createModel()
+        placeChildren(model, { w1: { x: 0, y: 300 }, w2: { x: 0, y: 100 }, w3: { x: 0, y: 200 } })
+        const schedules = expandAnimations(model, [
+            { type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: 60 }
+        ])
+        expect(schedules.map(s => s.id)).toEqual(['w1', 'w2', 'w3'])
+        expect(schedules.map(s => s.delay)).toEqual([0, 60, 120])
+    })
+
+    test('a recording with the screen order replays top to bottom', () => {
+        const model = createModel()
+        placeChildren(model, { w1: { x: 0, y: 300 }, w2: { x: 0, y: 100 }, w3: { x: 0, y: 200 } })
+        const schedules = expandAnimations(model, [
+            { type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: 60, order: 'screen' }
+        ])
+        expect(schedules.map(s => s.id)).toEqual(['w2', 'w3', 'w1'])
+        expect(schedules.map(s => s.delay)).toEqual([0, 60, 120])
+    })
+
+    test('a recording asked for the model order keeps the declaration order', () => {
+        const model = createModel()
+        placeChildren(model, { w1: { x: 0, y: 300 }, w2: { x: 0, y: 100 }, w3: { x: 0, y: 200 } })
+        const schedules = expandAnimations(model, [
+            { type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: 60, order: 'model' }
+        ])
+        expect(schedules.map(s => s.id)).toEqual(['w1', 'w2', 'w3'])
+    })
+
+    /**
+     * The live run and the replay are two implementations of one fan out. If
+     * they ever disagree about the delays, the recording plays back a sequence
+     * that never happened, so they are compared against each other here rather
+     * than each being pinned on its own.
+     */
+    test('the replay and the live run schedule the same delays', () => {
+        const model = createModel()
+        placeChildren(model, { w1: { x: 30, y: 300 }, w2: { x: 0, y: 100 }, w3: { x: 10, y: 200 } })
+        const delta = { type: 'GroupAnimation', id: 'g1', animation: 'reveal', duration: 300, step: 70, order: 'screen' }
+
+        const scheduled = applyGroupAnimation(model, liveRenderFactory(model), liveAnimationFactory(), delta)
+        const replayed = expandAnimations(model, [delta])
+
+        expect(replayed.map(s => [s.id, s.delay])).toEqual(scheduled.map(s => [s.id, s.delay]))
     })
 
     /**

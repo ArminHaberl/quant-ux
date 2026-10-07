@@ -43,9 +43,15 @@ export function getEventAnimations (event) {
  * One schedule per animated widget: [{id, animation, duration, delay}].
  *
  * The fan out mirrors applyGroupAnimation() (ScriptAnimations.js), including
- * the flattening of sub groups and the staggering by the child's index in the
- * group. Children that are missing from the model are dropped but keep their
- * place in the count, so the delays of the ones after them do not shift.
+ * the ordering, the flattening of sub groups and the staggering by the child's
+ * index in the group. Children that are missing from the model are dropped but
+ * keep their place in the count, so the delays of the ones after them do not
+ * shift.
+ *
+ * A delta with no order was recorded before QGroup.animate() wrote one, and has
+ * to keep the declaration order it was made with rather than pick up the screen
+ * order a newer API defaults to. Same helper, same fallback, so the live run and
+ * the replay cannot drift apart.
  *
  * Unknown animations are skipped for a widget, because applyWidgetAnimation()
  * refuses to run them either. A group is different: applyGroupAnimation()
@@ -68,7 +74,7 @@ export function expandAnimations (model, animations) {
                 Logger.warn('ScriptAnimationReplay > no group with id ' + change.id)
                 return
             }
-            const children = ModelUtil.getAllGroupChildren(group, model)
+            const children = ModelUtil.getOrderedGroupChildren(group, model, change.order)
             const staggered = change.animation === 'reveal' || change.animation === 'typewriter'
             children.forEach((id, index) => {
                 if (!widgets || !widgets[id]) {
