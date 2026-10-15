@@ -13,7 +13,8 @@
         "z": 0,
         "props": {
             "url": "",
-            "fit": "contain"
+            "fit": "contain",
+            "subtitle": ""
         },
         "has": {
             "data": true,

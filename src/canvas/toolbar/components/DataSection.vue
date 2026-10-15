@@ -242,6 +242,7 @@ export default {
 		_showVideo(model) {
 			this._setSectionLabel("Video");
 			this._renderInput(model.props, "url", "The URL of the video. Absolute or relative to this host.", "https://your.host/clip.mp4");
+			this._renderInput(model.props, "subtitle", "Optional subtitles, as a WebVTT (.vtt) URL. They show automatically and the language is English. Leave empty for no subtitles.", "https://your.host/clip.vtt");
 			this._renderInputDropDown("Aspect Fit", model, ['contain', 'cover'], "fit", true);
 		},
 

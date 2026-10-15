@@ -2,7 +2,10 @@
     <div class="MatcWidgetTypeVideo">
         <video v-if="url" :key="url" ref="video" class="MatcWidgetTypeVideoEl"
             :src="url" :style="videoStyle"
-            :controls="mode !== 'edit'" playsinline preload="metadata"></video>
+            :controls="mode !== 'edit'" playsinline preload="metadata">
+            <track v-if="subtitle" :src="subtitle" kind="subtitles"
+                srclang="en" label="Subtitles" :default="true" />
+        </video>
         <div v-else class="MatcWidgetTypeVideoEmpty">
             <span class="mdi mdi-play"></span>
         </div>
@@ -35,6 +38,23 @@ export default {
              * because stretching a video looks broken.
              */
             fit: 'contain',
+            /**
+             * Optional subtitles, as a plain URL to a WebVTT file, used verbatim
+             * as the <track> src. Only a single track is supported and it is
+             * always the default one, so the subtitles show as soon as the
+             * video plays and the player only ever offers one choice.
+             *
+             * Must be WebVTT (.vtt). A .srt file will not load. And it has to
+             * be same origin, like the video: the track is fetched with CORS
+             * rules and no crossorigin attribute is set anywhere, so a track
+             * on another origin is silently dropped rather than erroring.
+             *
+             * The language is hardcoded to English, so the captions menu reads
+             * "English" regardless of the language the study is in. It is a
+             * one line change to promote it to a second input if that ever
+             * matters, since nothing else in the model depends on it.
+             */
+            subtitle: '',
             style: {},
             model: {}
         };
@@ -62,6 +82,7 @@ export default {
             const props = (model && model.props) || {};
             this.url = props.url || '';
             this.fit = props.fit || 'contain';
+            this.subtitle = props.subtitle || '';
             this.setStyle(style, model);
         },
 
