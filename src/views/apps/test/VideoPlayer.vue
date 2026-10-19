@@ -41,8 +41,8 @@ import Analytics from 'dash/Analytics'
 import Preview from 'page/Preview'
 import Core from 'core/Core'
 import Services from 'services/Services'
-import JSONPath from 'core/JSONPath'
 import { getEventAnimations, expandAnimations, getFrameStyle, getEndStyle } from 'core/engines/ScriptAnimationReplay'
+import { buildEventStates, isLifecycleState } from 'core/engines/ScriptStateReplay'
 
 export default {
     name: 'Player',
@@ -656,262 +656,33 @@ export default {
 			 * states[screenID][widgetID][state] object. We do this because of the
 			 * radio buttons that we have to controll on a screen level...
 			 */
-			var lastStates = this.getDefaultStates();
-
-			var widgetStatesByEvent ={};
-			var lastScriptEffects = {};
-			var lastScriptData = {};
-			var scriptEffectsByEvent = {};
-			var scriptDataByEvent = {};
+			var defaultStates = this.getDefaultStates();
 
 			/**
-			 * Track which widgets have a recorded interaction state per screen.
-			 * Script data must never overwrite user interactions during replay.
+			 * The per event state projection itself is pure and lives in
+			 * ScriptStateReplay.js, so a jest test can walk a recorded session
+			 * without rendering widgets. The result also carries a second
+			 * table, the last value carrying state of every widget, which
+			 * setTime re-applies when a popup life cycle state (open, close,
+			 * validation) would otherwise be all a widget gets.
 			 */
-			var lastTouchedWidgets = {};
-			var touchedWidgetsByEvent = {};
+			var result = buildEventStates(this.events, defaultStates);
 
-			var overLays = [];
-			var overlayStatesByEvent ={};
+			this._widgetStates = result.widgetStates;
+			this._widgetValueStates = result.valueStates;
+			this._scriptEffects = result.scriptEffects;
+			this._scriptData = result.scriptData;
+			this._touchedWidgets = result.touchedWidgets;
+			this._overLayStates = result.overlayStates;
+			this._scrollStates = result.scrollStates;
 
-			var lastScroll = {
-				type:"scroll",
-				value:0
-			};
-			var screenScoll = {};
-
-			/**
-			 * Events logged by a ScreenSegment child were recorded without a
-			 * screen, because the container wired its children with the browser
-			 * global instead of the real one, so `screen` was window.screen.id,
-			 * which is undefined. The recorder is fixed now, but every existing
-			 * recording still lacks the field, and without it those events are
-			 * dropped from the per event state map and never replay.
-			 *
-			 * Recover it from the last event that did carry a screen, which is
-			 * what the recorder would have written. this.events is our own
-			 * lang.clone of the session, so writing back to it is safe.
-			 */
-			var lastKnownScreen = null;
-			var backfilled = 0;
-
-			for(let i=0; i <this.events.length;i++){
-				let event = this.events[i];
-				if (event.screen) {
-					lastKnownScreen = event.screen;
-				} else if (lastKnownScreen) {
-					event.screen = lastKnownScreen;
-					backfilled++;
-				}
-				let screenID = event.screen;
-				// let eventID = event.id
-
-				/**
-				 * 1) we clone that last state of all widgets. Then we set the state
-				 * for the current event to the states of the current screen!
-				 */
-				var states = lang.clone(lastStates)
-				widgetStatesByEvent[event.id] = states[screenID] || {};
-				lastStates = states;
-
-				var scriptEffects = lang.clone(lastScriptEffects)
-				var scriptData = lang.clone(lastScriptData)
-				/**
-				 * Fresh set per event. Screens reset the touched widgets;
-				 * everything else accumulates.
-				 */
-				var touchedWidgets = (event.type == "ScreenLoaded" || event.type == "ScreenAnimation")
-					? {}
-					: Object.assign({}, lastTouchedWidgets)
-
-				/**
-				 * 2) if there is a new state, we update it
-				 * for the new state for the widget that emited it
-				 */
-				if (event.state && event.state.type === "script") {
-					this.applyScriptEffect(scriptEffects, scriptData, event.state.value)
-				} else if(event.state && event.type!="ScreenScroll" && event.widget){
-
-
-					if(states[screenID]){
-
-						/**
-						 * FIXME: If we do master-state-propagation, we have to update the state here, or?
-						 */
-
-						states[screenID][event.widget] = event.state;
-
-						touchedWidgets[event.widget] = true
-
-						/**
-						 * FIXME: For the radio box we have to change  the
-						 * states of the other radio boxes. For now this hack is
-						 * ok, as I think we will only have one type of widgets with synced
-						 * states. Also if we have several radio button groups we have to fix
-						 * this...
-						 */
-						if(event.state.type == "radiobox.checked"){
-							this._setStates(states[screenID],"radiobox.checked", false, event);
-						}
-					} else {
-						console.warn("getWidgetStatesByEvent() > No state for screen ", screenID);
-					}
-
-				}
-				lastScriptEffects = scriptEffects
-				lastScriptData = scriptData
-				scriptEffectsByEvent[event.id] = scriptEffects
-				scriptDataByEvent[event.id] = scriptData
-
-				lastTouchedWidgets = touchedWidgets
-				touchedWidgetsByEvent[event.id] = touchedWidgets
-
-				/**
-				 * 3) Here we build for each event the scrollPosition.
-				 * ScreenLoaded and ScreenAnimation will set the scrolling to 0!
-				 *
-				 */
-				if(event.type=="ScreenScroll" && event.state){
-					screenScoll[event.id] =event.state;
-					lastScroll = {
-						type:"scroll",
-						value:event.state.value
-					};
-
-				} else if(event.type=="ScreenLoaded" || event.type=="ScreenAnimation"){
-					/**
-					 * We set scroll to 0. Simulator does the same
-					 */
-					var state = {
-						type:"scroll",
-						value:0
-					};
-					screenScoll[event.id] =state;
-					lastScroll = state;
-					/**
-					 * Add here scroll state only of we do not have a ScreenAnimation.
-					 * If a ScreenLoad follows a ScreenAnimation we do not reset as well!
-					 */
-					var lastEvent = this.events[i-1];
-					if (lastEvent && event.type !="ScreenAnimation" && !(lastEvent.type == "ScreenAnimation" && event.type == "ScreenLoaded")) {
-						if(event.scrollTop != undefined && event.scrollTop != null){
-							state.value = event.scrollTop;
-						}
-					}
-
-					/**
-					 * FIXME: reset here all widget states??
-					 */
-				} else {
-					/**
-					 * other events took place at the same scroll position as before
-					 */
-					screenScoll[event.id] = lastScroll;
-				}
-
-				if(event.type=="ScreenLoaded" ){
-					overLays = [];
-				}
-
-				if(event.type=="OverlayLoaded"){
-					let index = overLays.indexOf(event.overlay);
-					if(index <0){
-						overLays.push(event.overlay);
-					}
-				}
-
-				if(event.type == "OverlayShowAnimation"){
-					if(event.animation){
-						let index = overLays.indexOf(event.animation.to);
-						if(index <0){
-							overLays.push(event.animation.to);
-						}
-					} else {
-						console.debug("initWidgetStatesAndScroll() > no animation for event", event)
-					}
-				}
-
-				if(event.type=="OverlayRemoved"){
-					let index = overLays.indexOf(event.overlay);
-					if(index >-1){
-						overLays.splice(index,1);
-					}
-				}
-				overlayStatesByEvent[event.id] = lang.clone(overLays);
-			}
-
-
-			this._widgetStates = widgetStatesByEvent;
-			this._scriptEffects = scriptEffectsByEvent;
-			this._scriptData = scriptDataByEvent;
-			this._touchedWidgets = touchedWidgetsByEvent;
-			this._overLayStates = overlayStatesByEvent;
-			this._scrollStates = screenScoll;
-
-			if (backfilled) {
-				console.log('backfilled screen onto ' + backfilled + ' event(s) that had none')
+			if (result.backfilled) {
+				console.log('backfilled screen onto ' + result.backfilled + ' event(s) that had none')
 			}
 
 			this.logger.log(2, "initWidgetStatesAndScroll", "exit");
 		},
 
-
-
-
-
-
-		_setStates(states,type, value, event){
-			for(var id in states){
-				var s = states[id];
-				if(s.type == type && id!= event.widget){
-					s.value = value;
-				}
-			}
-		},
-
-		applyScriptEffect (effects, data, effect) {
-			if (!effect) {
-				return
-			}
-
-			const widgetChanges = effect.widgetChanges || []
-			widgetChanges.forEach(change => {
-				if (!change || !change.id || (change.key !== 'style' && change.key !== 'props')) {
-					return
-				}
-
-				if (!effects[change.id]) {
-					effects[change.id] = {}
-				}
-				const current = effects[change.id][change.key] || {}
-				let value = lang.clone(change.value || {})
-
-				/**
-				 * A stray empty recorded value must not wipe the widget's
-				 * static props (e.g. a label's label text). Only merge
-				 * entries that carry a real value.
-				 */
-				if (change.key === 'props') {
-					const merged = {}
-					for (const key in value) {
-						if (value[key] !== undefined && value[key] !== null && value[key] !== '' ) {
-							merged[key] = value[key]
-						}
-					}
-					value = merged
-				}
-
-				effects[change.id][change.key] = Object.assign({}, current, value)
-			})
-
-			const dataChanges = effect.dataChanges || []
-			dataChanges.forEach(change => {
-				if (!change || !change.path) {
-					return
-				}
-				JSONPath.set(data, change.path, change.removed ? undefined : change.value)
-			})
-		},
 
 
 
@@ -1378,8 +1149,20 @@ export default {
 				 * now update widget states
 				 */
 				var states = this._widgetStates[event.id];
+				var valueStates = this._widgetValueStates ? this._widgetValueStates[event.id] : null;
 				for(var widgetID in states){
 					var state = states[widgetID];
+
+					/**
+					 * A popup life cycle state (open, close, hover, validation)
+					 * does not carry the widget's value. Re-apply the retained
+					 * value state first, so a script prefill is not lost while
+					 * the state timeline has moved on to life cycle states.
+					 */
+					if (valueStates && isLifecycleState(state) && valueStates[widgetID]) {
+						this.preview.setWidgetState(widgetID, valueStates[widgetID], forceMarker, t +this.min);
+					}
+
 					this.preview.setWidgetState(widgetID, state, forceMarker, t +this.min);
 				}
 
