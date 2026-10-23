@@ -12,7 +12,7 @@ import { sanitizeObjectKey } from "common/SanitizeUtil";
 import { validatesOnChange } from "../../util/ValidationTrigger";
 import css from 'dojo/css'
 // import touch from "dojo/touch";
-// import on from "dojo/on";
+import on from "dojo/on";
 // import domGeom from "dojo/domGeom";
 
 export default {
@@ -57,6 +57,9 @@ export default {
       this._rowHooks = {}
       this._rowNodes = {}
       this._tableBody = null
+      this.currentHoverRow = null
+      this._hoverStyleSnapshot = null
+      this.rowErrorsVisible = false
     },
 
     async moveUp (i, e) {
@@ -76,9 +79,14 @@ export default {
     wireEvents () {      
       this._paddingNodes.forEach(node => {
         this.tempOwn(this.addClickListener(node, (e) => this.selectRadio(e, node)));
-        // this.tempOwn(on(node, touch.over, () => this.hoveBtn(node)));
-        // this.tempOwn(on(node, touch.out, () => this.hoveBtn()));
       })
+      if (this.mode === "simulator" || this.mode === "view") {
+        Object.keys(this._rowNodes).forEach(rowName => {
+          const row = this._rowNodes[rowName]
+          this.tempOwn(on(row, "mouseenter", () => this.hoverRow(rowName)))
+          this.tempOwn(on(row, "mouseleave", () => this.clearRowHover()))
+        })
+      }
     },
 
     selectRadio (e, node) {
@@ -89,23 +97,125 @@ export default {
       this.onChange(e)
     },
 
-    hoveBtn (node) {
-
-      if (!this.model.hover) {
+    /**
+     * Paint the hover style on one table row and nothing else. The keys of
+     * model.hover land on the same nodes their normal style counterparts do:
+     * background and color on the row itself (the striping layer of
+     * _setRowStyle), background and border colors on the radio boxes (their
+     * borders are the default hover state), color on the label and
+     * colorButton on the hooks. UIWidget.setBorderColorForNode() cannot be
+     * used here: _setBorderStyle() repaints every _borderNodes entry and
+     * would highlight the whole table.
+     *
+     * Every node that is about to be painted is snapshotted first, so
+     * clearRowHover() can put the inline styles back exactly as they were.
+     * Reconstructing them from this.style is not enough: the toolbar's
+     * border editor writes the four border longhands and not the
+     * borderColor shorthand, and writing the empty shorthand (which the
+     * reconstruction did for such a style) wipes the longhands and drops the
+     * radio boxes back to their grey CSS default.
+     *
+     * A row that currently shows its validation error takes only the row
+     * fill from the hover style: the error must never appear to vanish under
+     * the pointer, so the label, the radio boxes and the hooks keep their
+     * error paint and only the row background is tinted.
+     */
+    hoverRow (rowName) {
+      const hover = this.model.hover
+      if (!hover) {
         return
       }
-      if (this.currentHover) {
-        this.currentHover.style.color = this.style.arrowColor
-        this.currentHover.style.background = this.style.background
-        this.setBorderColorForNode(this.currentHover, this.style)
+      if (this.currentHoverRow === rowName) {
+        return
       }
-      this.currentHover = node
-      if (node) {
-        this.currentHover.style.color = this.style.arrowColorHover
-        this.currentHover.style.background = this.model.hover.background
-        this.setBorderColorForNode(this.currentHover, this.model.hover)
-      }
+      this.clearRowHover()
+      const isErrorRow = this.rowErrorsVisible && this.getUnansweredRows().indexOf(rowName) >= 0
+      this.currentHoverRow = rowName
 
+      const row = this._rowNodes[rowName]
+      const label = this._rowLabels[rowName]
+      const radios = this._rowRadios[rowName] || {}
+      const hooks = this._rowHooks[rowName] || []
+      const nodes = [row, label].concat(Object.keys(radios).map(col => radios[col]), hooks)
+      this._hoverStyleSnapshot = nodes.filter(node => node).map(node => {
+        return { node: node, cssText: node.style.cssText }
+      })
+
+      if (row) {
+        if (hover.background) {
+          row.style.background = hover.background
+        }
+        if (hover.color && !isErrorRow) {
+          row.style.color = hover.color
+        }
+      }
+      if (isErrorRow) {
+        return
+      }
+      if (label && hover.color) {
+        label.style.color = hover.color
+      }
+      for (const col in radios) {
+        const radio = radios[col]
+        if (hover.background) {
+          radio.style.background = hover.background
+        }
+        this.applyBorderStyle(radio, hover)
+      }
+      hooks.forEach(hook => {
+        if (hover.colorButton) {
+          hook.style.background = hover.colorButton
+        }
+      })
+    },
+
+    /**
+     * The border colors of one node from a style object. Both key shapes
+     * exist in the wild: the theme defaults use the borderColor shorthand,
+     * the toolbar's border editor writes the four longhands. The shorthand
+     * goes first so the longhands can override a single side.
+     */
+    applyBorderStyle (node, style) {
+      if (style.borderColor) {
+        node.style.borderColor = style.borderColor
+      }
+      if (style.borderTopColor) {
+        node.style.borderTopColor = style.borderTopColor
+      }
+      if (style.borderBottomColor) {
+        node.style.borderBottomColor = style.borderBottomColor
+      }
+      if (style.borderRightColor) {
+        node.style.borderRightColor = style.borderRightColor
+      }
+      if (style.borderLeftColor) {
+        node.style.borderLeftColor = style.borderLeftColor
+      }
+    },
+
+    /**
+     * Put the hovered row back exactly the way it was before hoverRow()
+     * painted it, by writing the inline style snapshots back verbatim. When
+     * the error paint is up (rowErrorsVisible), the unanswered rows get it
+     * back afterwards. Clears only the row that was actually hover painted,
+     * so the mouseleave of an error row is a no-op.
+     */
+    clearRowHover () {
+      const rowName = this.currentHoverRow
+      if (!rowName) {
+        return
+      }
+      this.currentHoverRow = null
+      const snapshot = this._hoverStyleSnapshot
+      this._hoverStyleSnapshot = null
+      if (snapshot) {
+        snapshot.forEach(entry => {
+          entry.node.style.cssText = entry.cssText
+        })
+      }
+      if (this.rowErrorsVisible) {
+        this.showRowErrors()
+      }
     },
     
 
@@ -564,9 +674,11 @@ export default {
           }
         })
       })
+      this.rowErrorsVisible = true
     },
 
     clearRowErrors () {
+      this.rowErrorsVisible = false
       const style = this.style || {}
       this._rowLabelNodes.forEach(label => {
         css.remove(label, "MatcWidgetTypeRadioTableRowError")
