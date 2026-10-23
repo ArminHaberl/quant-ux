@@ -11,6 +11,8 @@
  * of the component in src/core/widgets/<Type>.vue.
  */
 
+import { toUSNumberString } from 'core/widgets/NumberUtil'
+
 const WIDGET_OUTPUT_TYPES = {
 	"ToggleButton": "active",
 	"SegmentButton": "options",
@@ -514,7 +516,7 @@ export function parseRuleValue (value, type) {
 		return null
 	}
 	if (type === "double") {
-		const normalized = text.replace(",", ".")
+		const normalized = toUSNumberString(text)
 		if (/^-?[0-9]+(\.[0-9]+)?$/.test(normalized)) {
 			return parseFloat(normalized)
 		}

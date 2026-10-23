@@ -158,6 +158,10 @@ describe('RuleModel.parseRuleValue', () => {
         expect(RuleModel.parseRuleValue('1,5', 'double')).toBe(1.5)
     })
 
+    test('reads a European grouped number like 1.234,56', () => {
+        expect(RuleModel.parseRuleValue('1.234,56', 'double')).toBe(1234.56)
+    })
+
     test('accepts a negative double', () => {
         expect(RuleModel.parseRuleValue('-2.25', 'double')).toBe(-2.25)
     })

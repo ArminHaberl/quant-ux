@@ -10,6 +10,7 @@ import topic from "dojo/topic";
 import Color from "dojo/_base/Color";
 import Logger from "common/Logger";
 import UIWidget from "core/widgets/UIWidget";
+import { toUSNumberString } from "core/widgets/NumberUtil";
 
 export default {
   name: "TextBox",
@@ -141,6 +142,7 @@ export default {
 
     onKeyUp () {
       this.log.log(3, "onKeyUp", "enter > ");
+      this.normalizeInput();
       this.addCompositeSubState(this._readValue());
       this.value = this._readValue();
       this.emit("keyUp", this._readValue());
@@ -176,6 +178,7 @@ export default {
     onBlur (e) {
       this.log.log(-1, "onBlur", "enter");
       this.stopPropagation(e);
+      this.normalizeInput();
 
       const v = this._readValue();
 
@@ -217,7 +220,8 @@ export default {
      */
     _readValue () {
       if (this.mode == "simulator") {
-        return this.input.value;
+        const v = this.input.value;
+        return this.isNumericValidation() ? toUSNumberString(v) : v;
       } else {
         /**
          * Not this.input.innerHTML: in "view" mode the placeholder is faked
@@ -305,12 +309,19 @@ export default {
         if (type == "custom") {
           type = validation.subtype;
         }
+        /**
+         * Never <input type="number">: the browser renders and accepts the
+         * decimal separator of its own locale ("," on de-DE, "." on en-US)
+         * and can sanitize a "." entry to empty. The input stays type="text"
+         * and gets only the keyboard hint, so the widget owns the text and
+         * toUSNumberString() keeps it in US format.
+         */
         switch (type) {
           case "int":
-            this.input.type = "number";
+            this.input.inputMode = "numeric";
             break;
           case "double":
-            this.input.type = "number";
+            this.input.inputMode = "decimal";
             break;
           case "email":
             this.input.type = "email";
@@ -319,6 +330,7 @@ export default {
             this.input.type = "tel";
             break;
           default:
+            this.input.inputMode = "";
             break;
         }
       }
@@ -424,6 +436,42 @@ export default {
       return this.value;
     },
 
+    /**
+     * Whether the validation makes this a number field, which is the only
+     * case in which a "," is a decimal separator rather than text. Resolves
+     * the "custom" subtype the same way _validateValue() does.
+     */
+    isNumericValidation () {
+      const validation = this.model && this.model.props ? this.model.props.validation : null;
+      if (!validation) {
+        return false;
+      }
+      const type = validation.type == "custom" ? validation.subtype : validation.type;
+      return type == "int" || type == "double";
+    },
+
+    /**
+     * Rewrite a localized decimal separator in the input to the US one as the
+     * user types, so the field always reads the way the value is stored. The
+     * common case is a 1:1 "," to "." replace and keeps the caret; rarer
+     * rewrites ("1.234,56") clamp it.
+     */
+    normalizeInput () {
+      if (this.mode != "simulator" || !this.isNumericValidation()) {
+        return;
+      }
+      const raw = this.input.value;
+      const normalized = toUSNumberString(raw);
+      if (normalized !== raw) {
+        const pos = this.input.selectionStart;
+        this.input.value = normalized;
+        if (pos != null && this.input.setSelectionRange) {
+          const p = Math.min(pos, normalized.length);
+          this.input.setSelectionRange(p, p);
+        }
+      }
+    },
+
     unsetPlaceHolder () {
       css.remove(this.input, "MatcWidgetTypeTextBoxInputPlaceholder");
       this.input.style.color = this.style.color;
@@ -441,6 +489,9 @@ export default {
 
     setValue (value, ignoreValidation) {
       if (value != null && value != undefined) {
+        if (this.isNumericValidation()) {
+          value = toUSNumberString(value);
+        }
         this.unsetPlaceHolder()
         const changed = this.value != value;
         /**
