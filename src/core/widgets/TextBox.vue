@@ -11,6 +11,7 @@ import Color from "dojo/_base/Color";
 import Logger from "common/Logger";
 import UIWidget from "core/widgets/UIWidget";
 import { toUSNumberString } from "core/widgets/NumberUtil";
+import { validatesOnChange } from "../../util/ValidationTrigger";
 
 export default {
   name: "TextBox",
@@ -127,6 +128,7 @@ export default {
       this.hasFocus = true;
       this.keyUpListener = on(this.input,"keyup", lang.hitch(this, "onKeyUp"));
       this.keyDownListener = on(this.input,"keydown", lang.hitch(this, "onKeyDown"));
+      this.inputListener = on(this.input,"input", lang.hitch(this, "onTextInput"));
       if (this.model.focus && this.lastValidation) {
         console.debug("onFocus", this.model.focus.color)
         this.emitAnimation(this.model.id, 200, this.model.focus);
@@ -142,10 +144,22 @@ export default {
 
     onKeyUp () {
       this.log.log(3, "onKeyUp", "enter > ");
-      this.normalizeInput();
       this.addCompositeSubState(this._readValue());
       this.value = this._readValue();
       this.emit("keyUp", this._readValue());
+    },
+
+    /**
+     * Fires for every value change, so typing, paste, cut and IME all land
+     * here (keyUp misses a context menu paste). The error state shows and
+     * clears while the user types, unless the validation was configured as
+     * "On Page Navigation" (see util/ValidationTrigger).
+     */
+    onTextInput () {
+      this.normalizeInput();
+      if (validatesOnChange(this.model.props.validation)) {
+        this.validate(this._readValue(), true);
+      }
     },
 
     onKeyDown(e) {
@@ -277,6 +291,10 @@ export default {
         this.keyDownListener.remove();
       }
       delete this.keyDownListener;
+      if (this.inputListener) {
+        this.inputListener.remove();
+      }
+      delete this.inputListener;
     },
 
     render (model, style, scaleX, scaleY) {
