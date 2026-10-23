@@ -57,6 +57,7 @@ export default {
       this._rowHooks = {}
       this._rowNodes = {}
       this._tableBody = null
+      this._labelColNode = null
       this.currentHoverRow = null
       this._hoverStyleSnapshot = null
       this.rowErrorsVisible = false
@@ -367,12 +368,34 @@ export default {
       this.cleanupRender()
       const data = this._getOrderedData(this.model.props.data)
       const table = this.db.table().build()
+      this.renderColumns(table, data)
       this.renderHeader(table, data)
       this.renderRows(table, data)
 
       this.setStyle(this.style, this.model);
       this.setValue(this.value)
       this.domNode.appendChild(table)
+    },
+
+    /**
+     * The column layout: one col for the label column, which takes the
+     * authored labelWidth, and one widthless col per data column. With
+     * table-layout: fixed (widgets.scss) the widthless cols share the
+     * remaining table width equally, so the radio columns all have the same
+     * width and the label column keeps its own instead of taking part in an
+     * equal split.
+     */
+    renderColumns (table, data) {
+      const header = data[0] || []
+      const colgroup = document.createElement('colgroup')
+      for (let i = 0; i < header.length; i++) {
+        const col = document.createElement('col')
+        if (i === 0) {
+          this._labelColNode = col
+        }
+        colgroup.appendChild(col)
+      }
+      table.appendChild(colgroup)
     },
 
     renderHeader(table, data) {
@@ -468,6 +491,9 @@ export default {
 
     _set_labelWidth(parent, style) {
       const w = this._getBorderWidth(style.labelWidth);
+      if (this._labelColNode) {
+        this._labelColNode.style.width = w + 'px'
+      }
       this._rowLabelNodes.forEach(node => {
         node.style.width = w + 'px'
       })
