@@ -196,10 +196,14 @@ export default {
 
     /**
      * Put the hovered row back exactly the way it was before hoverRow()
-     * painted it, by writing the inline style snapshots back verbatim. When
-     * the error paint is up (rowErrorsVisible), the unanswered rows get it
-     * back afterwards. Clears only the row that was actually hover painted,
-     * so the mouseleave of an error row is a no-op.
+     * painted it, by writing the inline style snapshots back verbatim. The
+     * snapshot can be stale: filling a radio re-runs the validation while the
+     * row is still hovered, and the last fill clears the error paint before
+     * the pointer leaves. So the validation layer gets the last word in
+     * either direction - it owns the label, radio and hook colors, the
+     * snapshot owns the row striping and the border colors the validation
+     * layer never touches. Clears only the row that was actually hover
+     * painted, so the mouseleave of an error row is a no-op.
      */
     clearRowHover () {
       const rowName = this.currentHoverRow
@@ -216,6 +220,8 @@ export default {
       }
       if (this.rowErrorsVisible) {
         this.showRowErrors()
+      } else {
+        this.clearRowErrors()
       }
     },
     
