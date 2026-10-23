@@ -90,7 +90,7 @@ export default {
             if (model.props.label) {
                 this.label = model.props.label
             }
-            if (model.props.placeholderLabel) {
+            if (model.props.placeholderLabel && !this.hasOwnValue()) {
                 this.setPlaceholder(model.props.placeholderLabel);
             }
         },

@@ -219,7 +219,14 @@ export default {
       if (this.mode == "simulator") {
         return this.input.value;
       } else {
-        return this.input.innerHTML;
+        /**
+         * Not this.input.innerHTML: in "view" mode the placeholder is faked
+         * by writing the label into the node (setPlaceholder), so the DOM
+         * text is the placeholder label whenever no value is set. getState()
+         * reads through here, and the player's getDefaultStates() would take
+         * that label as the widget's default value.
+         */
+        return this.value;
       }
     },
 
@@ -347,13 +354,38 @@ export default {
     },
 
     initLabel (model) {
+      if (this.hasOwnValue()) {
+        /**
+         * A re-render (RenderFactory.updateWidget() for a script effect) must
+         * not wipe a bound or typed value. In "view" mode setPlaceholder()
+         * would overwrite the displayed text with the label while leaving
+         * this.value alone, and every restore channel (setValue(),
+         * setDataBinding()) no-ops on the this.value equality check, so the
+         * player would keep showing the placeholder text where the recorded
+         * value belongs. Only the label derived text is reset here, so a
+         * script that changes the label of a widget that still shows its
+         * label as its value keeps working.
+         */
+        return;
+      }
       if (model.props.label) {
         if (model.props.placeholder) {
+          this._labelValue = null;
           this.setPlaceholder(model.props.label);
         } else {
+          this._labelValue = model.props.label;
           this.setValue(model.props.label, true);
         }
       }
+    },
+
+    /**
+     * Whether the widget carries a value of its own (data binding or user
+     * input) rather than the label text initLabel() derived. Child classes
+     * that overwrite initLabel() reuse this for the same guard.
+     */
+    hasOwnValue () {
+      return this.value != null && this.value !== undefined && this.value !== this._labelValue;
     },
 
     onTextBoxRendered () {
@@ -408,23 +440,35 @@ export default {
     },
 
     setValue (value, ignoreValidation) {
-      this.unsetPlaceHolder()
-      if (value != null && value != undefined && this.value != value) {
-        this.value = value;
-        if (this.mode == "simulator") {
-          this.input.value = value;
-        } else {
-          this.input.innerHTML = value;
-          if (this.model.props.placeholder) {
-            if (this.model.props.label != value) {
-              this.input.style.color = this.style.color;
-            } else {
-              this.input.style.color = this.getPlaceHolderColor(this.style);
+      if (value != null && value != undefined) {
+        this.unsetPlaceHolder()
+        const changed = this.value != value;
+        /**
+         * Write the DOM whenever it disagrees with the value, not only when
+         * this.value changes: a re-render can reset the displayed text
+         * (initLabel / setPlaceholder) without touching this.value, and the
+         * replay re-applies the recorded value through this method at every
+         * frame. Without the sync check those calls would no-op on the
+         * this.value equality and leave the reset text on screen.
+         */
+        const domValue = this.mode == "simulator" ? this.input.value : this.input.innerHTML;
+        if (changed || domValue != value) {
+          this.value = value;
+          if (this.mode == "simulator") {
+            this.input.value = value;
+          } else {
+            this.input.innerHTML = value;
+            if (this.model.props.placeholder) {
+              if (this.model.props.label != value) {
+                this.input.style.color = this.style.color;
+              } else {
+                this.input.style.color = this.getPlaceHolderColor(this.style);
+              }
             }
           }
         }
 
-        if (!ignoreValidation) {
+        if (!ignoreValidation && changed) {
           this.validate(this.value, true);
         }
       }

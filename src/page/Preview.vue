@@ -19,6 +19,7 @@ import Layout from "core/Layout";
 import RenderFactory from 'core/RenderFactory'
 import Animation from 'core/Animation'
 import JSONPath from 'core/JSONPath'
+import { getEffectFrame } from 'core/engines/ScriptAnimationReplay'
 
 export default {
   name: "Preview",
@@ -76,6 +77,7 @@ export default {
       this.model = model;
 
       this._scriptEffectBase = {};
+      this._scriptEffectApplied = {};
 
       this.selectedWidgetID = widgetID;
 
@@ -436,6 +438,9 @@ export default {
         screen.children.forEach(id => {
           delete this._widgets[id]
           delete this._lastWidgetAnimationState[id]
+          if (this._scriptEffectApplied) {
+            delete this._scriptEffectApplied[id]
+          }
           if (this.renderFactory && this.renderFactory._uiWidgetsStates) {
             delete this.renderFactory._uiWidgetsStates[id]
           }
@@ -553,6 +558,9 @@ export default {
       if (!this._scriptEffectBase) {
         this._scriptEffectBase = {}
       }
+      if (!this._scriptEffectApplied) {
+        this._scriptEffectApplied = {}
+      }
 
       const currentEffects = effects || {}
       const widgetIDs = {}
@@ -577,11 +585,7 @@ export default {
         }
 
         const base = this._scriptEffectBase[id]
-        const effect = currentEffects[id] || {}
-        const style = Object.assign({}, base.style, effect.style || {})
-        const props = Object.assign({}, base.props, effect.props || {})
-        const styleChanged = JSON.stringify(widget.style || {}) !== JSON.stringify(style)
-        const propsChanged = JSON.stringify(widget.props || {}) !== JSON.stringify(props)
+        const frame = getEffectFrame(base, this._scriptEffectApplied[id], currentEffects[id])
 
         /**
          * Apply the effect to the DOM without poisoning the model: script
@@ -589,22 +593,30 @@ export default {
          * the shared model widget. Otherwise re-renders (and inherited
          * copies) would read blanked props (e.g. a cleared label) and
          * the white/empty duplicates in the player would persist.
-
+         *
+         * Only when the frame changed since the last one rendered: a
+         * re-render rebuilds the widget content, and doing that at every
+         * frame of a scrub just because the effect is still active wiped the
+         * data binding values of animated inputs (TextBox.initLabel).
          */
-        const orgStyle = widget.style
-        const orgProps = widget.props
-        widget.style = style
-        widget.props = props
-        if (styleChanged || propsChanged) {
+        if (frame.changed) {
+          const orgStyle = widget.style
+          const orgProps = widget.props
+          widget.style = frame.style
+          widget.props = frame.props
           this.renderFactory.updateWidget(widget)
+          widget.style = orgStyle
+          widget.props = orgProps
+          this._scriptEffectApplied[id] = {
+            style: frame.style,
+            props: frame.props
+          }
         }
-        widget.style = orgStyle
-        widget.props = orgProps
 
         const node = this.renderFactory.getWidgetNodeByID(id)
         if (node) {
-          if (style.display !== undefined) {
-            node.style.display = style.display || ''
+          if (frame.style.display !== undefined) {
+            node.style.display = frame.style.display || ''
           } else {
             node.style.display = ''
           }
@@ -1007,6 +1019,11 @@ export default {
       this.removeFixedPopups();
       this._widgets = {};
       this._lastWidgetAnimationState = {};
+      /**
+       * The widgets were just rebuilt and show their base style again, so
+       * every active effect frame has to be rendered onto them once more.
+       */
+      this._scriptEffectApplied = {};
     }
   },
   mounted() {

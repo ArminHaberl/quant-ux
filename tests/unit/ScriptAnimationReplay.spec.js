@@ -2,7 +2,9 @@ import {
     getEventAnimations,
     expandAnimations,
     getFrameStyle,
-    getEndStyle
+    getEndStyle,
+    mergeScriptEffect,
+    getEffectFrame
 } from '../../src/core/engines/ScriptAnimationReplay'
 import { applyGroupAnimation } from '../../src/core/engines/ScriptAnimations'
 
@@ -486,5 +488,126 @@ describe('ScriptAnimationReplay.getEndStyle', () => {
     test('a zero duration ends on the end value', () => {
         expect(getEndStyle({ id: 'w1', animation: 'fadeIn', duration: 0, delay: 0 }, {})).toEqual({ display: 'block', opacity: 1 })
         expect(getEndStyle({ id: 'w1', animation: 'fadeOut', duration: 0, delay: 0 }, {})).toEqual({ display: 'none', opacity: 0 })
+    })
+})
+
+describe('ScriptAnimationReplay.getEffectFrame', () => {
+
+    test('mergeScriptEffect layers the effect over the base', () => {
+        const base = { style: { background: '#FF0000', display: 'none' }, props: { label: 'a' } }
+        const merged = mergeScriptEffect(base, { style: { display: 'block' }, props: { label: 'b' } })
+        expect(merged).toEqual({
+            style: { background: '#FF0000', display: 'block' },
+            props: { label: 'b' }
+        })
+    })
+
+    test('mergeScriptEffect leaves the base untouched', () => {
+        const base = { style: { display: 'none' }, props: { label: 'a' } }
+        mergeScriptEffect(base, { style: { display: 'block' }, props: { label: 'b' } })
+        expect(base).toEqual({ style: { display: 'none' }, props: { label: 'a' } })
+    })
+
+    test('mergeScriptEffect tolerates a missing base or effect', () => {
+        expect(mergeScriptEffect(null, { style: { display: 'block' } }))
+            .toEqual({ style: { display: 'block' }, props: {} })
+        expect(mergeScriptEffect({ style: { display: 'none' } }, null))
+            .toEqual({ style: { display: 'none' }, props: {} })
+    })
+
+    /**
+     * An animated input lost its data binding value in the VideoPlayer,
+     * although the live simulator kept it. The player re-rendered every
+     * widget with an active script effect at every frame, just because the
+     * accumulated effect (at least the display write of the animation) kept
+     * differing from the design style. Each re-render ran TextBox.initLabel,
+     * which reset the displayed text to the label, and the recorded value
+     * could not be written back: setValue() saw this.value unchanged and
+     * skipped the DOM. The frame of a still active effect must therefore be
+     * rendered once, not once per frame.
+     */
+    test('a frame that equals the last rendered one is not rendered again', () => {
+        const base = { style: { display: 'none' }, props: {} }
+        const effect = { style: { display: 'block' } }
+
+        const first = getEffectFrame(base, null, effect)
+        expect(first.changed).toBe(true)
+
+        const again = getEffectFrame(base, { style: first.style, props: first.props }, effect)
+        expect(again.changed).toBe(false)
+        expect(again.style).toEqual(first.style)
+    })
+
+    test('the first frame renders when the effect changes the base', () => {
+        const base = { style: { display: 'none' }, props: {} }
+        const frame = getEffectFrame(base, null, { style: { display: 'block' } })
+        expect(frame.changed).toBe(true)
+        expect(frame.style).toEqual({ display: 'block' })
+    })
+
+    test('the first frame is skipped when the effect equals the base', () => {
+        const base = { style: { display: 'none' }, props: {} }
+        const frame = getEffectFrame(base, null, { style: { display: 'none' } })
+        expect(frame.changed).toBe(false)
+    })
+
+    test('a second script effect renders once on top of the first', () => {
+        const base = { style: { display: 'none' }, props: {} }
+        const first = getEffectFrame(base, null, { style: { display: 'block' } })
+
+        const grown = getEffectFrame(base, { style: first.style, props: first.props }, {
+            style: { display: 'block', color: '#00FF00' }
+        })
+        expect(grown.changed).toBe(true)
+        expect(grown.style).toEqual({ display: 'block', color: '#00FF00' })
+
+        const settled = getEffectFrame(base, { style: grown.style, props: grown.props }, {
+            style: { display: 'block', color: '#00FF00' }
+        })
+        expect(settled.changed).toBe(false)
+    })
+
+    test('scrubbing back before the trigger renders the base once', () => {
+        const base = { style: { display: 'none' }, props: {} }
+        const applied = { style: { display: 'block' }, props: {} }
+
+        const restored = getEffectFrame(base, applied, null)
+        expect(restored.changed).toBe(true)
+        expect(restored.style).toEqual({ display: 'none' })
+
+        const settled = getEffectFrame(base, { style: restored.style, props: restored.props }, null)
+        expect(settled.changed).toBe(false)
+    })
+
+    /**
+     * After a screen change (or a closed overlay) the player rebuilds the
+     * widgets, which show their base style again. The tracker is cleared
+     * with them (applied = null), so the still active effect frame has to
+     * render onto the fresh widget even though the same frame was rendered
+     * before the rebuild.
+     */
+    test('a rebuilt widget gets its effect frame rendered again', () => {
+        const base = { style: { display: 'none' }, props: {} }
+        const effect = { style: { display: 'block' } }
+        const frame = getEffectFrame(base, null, effect)
+        expect(frame.changed).toBe(true)
+        expect(getEffectFrame(base, null, effect).changed).toBe(true)
+    })
+
+    test('a prop change counts like a style change', () => {
+        const base = { style: {}, props: { label: 'Name' } }
+        const applied = { style: {}, props: { label: 'Name' } }
+
+        const renamed = getEffectFrame(base, applied, { props: { label: 'Other' } })
+        expect(renamed.changed).toBe(true)
+        expect(renamed.props).toEqual({ label: 'Other' })
+    })
+
+    test('a frame equal to the base with no prior application is not rendered', () => {
+        const base = { style: { display: 'none' }, props: { label: 'a' } }
+        const frame = getEffectFrame(base, null, {})
+        expect(frame.changed).toBe(false)
+        expect(frame.style).toEqual({ display: 'none' })
+        expect(frame.props).toEqual({ label: 'a' })
     })
 })

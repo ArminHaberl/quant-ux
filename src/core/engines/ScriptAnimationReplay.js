@@ -160,6 +160,51 @@ export function getEndStyle (schedule, orgStyle) {
 }
 
 /**
+ * The widget style and props one script effect frame renders.
+ *
+ * The player applies the recorded widgetChanges of the ScriptEffect events
+ * cumulatively (ScriptStateReplay.applyScriptEffect), and this is what that
+ * accumulated effect looks like on top of the widget's design style and
+ * props. Preview.setScriptEffectState() swaps the result into the model
+ * widget for the duration of one re-render, so it stays a fresh object and
+ * is never written back into the model.
+ */
+export function mergeScriptEffect (base, effect) {
+    return {
+        style: Object.assign({}, (base && base.style) || {}, (effect && effect.style) || {}),
+        props: Object.assign({}, (base && base.props) || {}, (effect && effect.props) || {})
+    }
+}
+
+/**
+ * The style and props of the frame to render, and whether the widget has to
+ * be re-rendered for it at all.
+ *
+ * `applied` is the frame that was last rendered, or null for a widget the
+ * player has not rendered an effect frame on yet -- after a screen re-render
+ * that is every widget again. A null falls back to the base frame (the
+ * widget with no effect on it), so a frame equal to what the widget already
+ * shows is not rendered again. That is load bearing: a re-render rebuilds
+ * the widget's content (TextBox.initLabel) and doing that at every frame of
+ * a scrub, just because the effect is still active, used to clobber the
+ * data binding values of animated inputs.
+ *
+ * An effect that shrinks back to nothing (the scrubber moved before the
+ * trigger) differs from the last applied frame and renders the base once,
+ * which is what puts a blanked prop or a hidden widget back.
+ */
+export function getEffectFrame (base, applied, effect) {
+    const frame = mergeScriptEffect(base, effect)
+    const last = applied || mergeScriptEffect(base, null)
+    return {
+        style: frame.style,
+        props: frame.props,
+        changed: JSON.stringify(last.style) !== JSON.stringify(frame.style)
+            || JSON.stringify(last.props) !== JSON.stringify(frame.props)
+    }
+}
+
+/**
  * How far into the animation we are, from 0 to 1. The same arithmetic as
  * Animation.getP() (Animation.js), which is what the live engine runs, minus
  * the easing the script API cannot ask for. A duration of zero is not a
