@@ -240,6 +240,10 @@ export class ModelService extends AbstractService{
         return this._get(`/examples/mouse/${appId}/${sessionId}.json`)
     }
 
+    findPublicEventsBySession (appId, sessionId) {
+        return this._get(`/examples/events/${appId}/${sessionId}.json`)
+    }
+
     findPublicTagAnnotations (id) {
         return this._get(`/examples/annotations/apps/${id}/tags.json`)
     }

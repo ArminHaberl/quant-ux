@@ -19,13 +19,7 @@
             :mouse="mouseEvents"
             @change="onAnnotationChange"
           />
-          <div v-else>
-            <div
-              class="notification is-danger"
-              v-if="hasToManyEvents"
-            >The Screen Recording is too big!</div>
-            <div class="MatcLoading" v-else>Loading...</div>
-          </div>
+          <div v-else class="MatcLoading">Loading...</div>
           <div class=" MatcSessionDetails">
             <div>
               <VideoAnnotation
@@ -74,7 +68,6 @@ export default {
     return {
       sessionID: "",
       hasComments: false,
-      hasToManyEvents: false,
       eventsWithAnnimations: [],
       sessionStart: '',
       mouseEvents: []
@@ -131,11 +124,14 @@ export default {
     },
     load() {
       this.sessionID = this.$route.params.session;
+      const sessionID = this.sessionID;
+      this.eventsWithAnnimations = [];
+      this.mouseEvents = [];
       Promise.all([
-        this.modelService.findEventsBySession(this.app.id, this.sessionID),
-        this.modelService.findMouseBySession(this.app.id, this.sessionID)
+        this.modelService.findEventsBySession(this.app.id, sessionID),
+        this.modelService.findMouseBySession(this.app.id, sessionID)
       ]).then(values => {
-        this.onLoaded(values[0], values[1]);
+        if (this.sessionID === sessionID) this.onLoaded(values[0], values[1]);
       });
     },
     onChangeSessionLabel () {
@@ -147,13 +143,8 @@ export default {
        if (start) {
           this.sessionStart = start
        }
-       if (events.length < 2000) {
-        this.eventsWithAnnimations = events;
-        this.mouseEvents = mouse;
-      } else {
-        this.hasToManyEvents = true;
-        this.$emit("Error", "This video is too big!");
-      }
+       this.mouseEvents = mouse;
+       this.eventsWithAnnimations = events;
     },
 
     /**
@@ -201,4 +192,3 @@ export default {
   }
 };
 </script>
-

@@ -6,11 +6,9 @@ import ModelUtil from '../ModelUtil'
  * every frame of the replay.
  *
  * The VideoPlayer is a scrubber, not a clock: it renders one frame for a
- * timestamp from a lookup table built once per session, and nothing is running
- * in the background that could advance an animation. So the timeline cannot be
- * driven the way it is live, by ScriptAnimations handing a tween to the
- * animation engine. It has to be precomputed, slot by slot, which is what this
- * module describes: what one animation looks like at one moment.
+ * timestamp, and nothing is running in the background to advance an animation.
+ * ReplayAnimationIndex uses these functions to evaluate sparse schedules on
+ * demand instead of precomputing every frame of the recording.
  *
  * Plain JS on purpose. VideoPlayer.vue is a .vue file, which this jest config
  * cannot import, so anything worth testing has to sit on this side of the

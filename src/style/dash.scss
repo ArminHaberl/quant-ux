@@ -605,6 +605,25 @@
 	overflow: auto;
 }
 
+.MatcPlayerEventPages {
+	display: flex;
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: $toolbar_form_background_focus;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 12px;
+	color: #cecece;
+	button {
+		cursor: pointer;
+	}
+	input {
+		width: 54px;
+	}
+}
+
 .MatcPlayerEvent{
 	padding: 20px;
 	color: #cecece;

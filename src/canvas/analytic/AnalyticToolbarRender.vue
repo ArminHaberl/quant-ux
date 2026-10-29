@@ -1072,14 +1072,16 @@ export default {
                 if (this.isPublic) {
                     Promise.all([
                         this.modelService.findPublicTagAnnotations(this.model.id),
-                        this.modelService.findPublicMouseBySession(this.model.id, sessionID)
+                        this.modelService.findPublicMouseBySession(this.model.id, sessionID),
+                        this.modelService.findPublicEventsBySession(this.model.id, sessionID)
                     ]).then(values => {
                         this._showSession(sessionID, cntr, dialog, values);
                     });
                 } else {
                     Promise.all([
                         this.modelService.findTagAnnotations(this.model.id),
-                        this.modelService.findMouseBySession(this.model.id, sessionID)
+                        this.modelService.findMouseBySession(this.model.id, sessionID),
+                        this.modelService.findEventsBySession(this.model.id, sessionID)
                     ]).then(values => {
                         this._showSession(sessionID, cntr, dialog, values);
                     });
@@ -1094,7 +1096,7 @@ export default {
             try {
                 const mouse = data[1];
 
-                const df = new DataFrame(this.events);
+                const df = new DataFrame(data[2]);
                 df.sortBy("time");
                 const sessionGroup = df.groupBy("session");
                 const events = sessionGroup.get(sessionID);
@@ -1104,7 +1106,6 @@ export default {
                 player.placeAt(cntr);
                 player.setModel(this.model);
                 player.setTestSettings(this.testSettings)
-                player.setMouse(mouse);
                 player.setMouse(mouse);
                 player.setSession(events, sessionID);
 

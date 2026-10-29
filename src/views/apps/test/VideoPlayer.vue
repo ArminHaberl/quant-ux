@@ -1,6 +1,7 @@
 <template>
      <div class="MatcPlayer">
 		<div class="MatcPlayerLeft">
+			<div v-if="preparing" class="MatcLoading">Preparing recording...</div>
 			<div class="MatcPlayerView" ref="container">
 			</div>
 			<div class="MatcPlayerNav">
@@ -41,8 +42,10 @@ import Analytics from 'dash/Analytics'
 import Preview from 'page/Preview'
 import Core from 'core/Core'
 import Services from 'services/Services'
-import { getEventAnimations, expandAnimations, getFrameStyle, getEndStyle } from 'core/engines/ScriptAnimationReplay'
-import { buildEventStates, isLifecycleState } from 'core/engines/ScriptStateReplay'
+import { getEventAnimations, expandAnimations } from 'core/engines/ScriptAnimationReplay'
+import { isLifecycleState } from 'core/engines/ScriptStateReplay'
+import ReplayStateIndex from 'core/engines/ReplayStateIndex'
+import ReplayAnimationIndex from 'core/engines/ReplayAnimationIndex'
 
 export default {
     name: 'Player',
@@ -51,6 +54,7 @@ export default {
     data: function () {
         return {
             running: false,
+            preparing: false,
             currentTime: 0,
             lastEventPos: 0,
             animationTimeOffSet: 400,
@@ -123,14 +127,18 @@ export default {
 			this.previewWrapper = this.renderPreview()
 		},
 
-		setSession(session,sessionID){
+		async setSession(session,sessionID){
 			this.logger.log(0, "setSession", "enter " + sessionID);
+			const request = this._sessionRequest = (this._sessionRequest || 0) + 1;
+			this.preparing = true;
 			try {
 
 				this.sessionID = sessionID;
 				this.session = session;
 				session.sortBy("time");
-				this.events = lang.clone(session.as_array());
+				this.events = session.as_array().map(event => Object.assign({}, event, {
+					gesture: event.gesture ? lang.clone(event.gesture) : event.gesture
+				}));
 
 
 				/**
@@ -163,7 +171,7 @@ export default {
 				this.taskMatches = this.getMatches();
 
 
-				this.duration = this.session.max("time") - this.session.min("time");
+				this.duration = Math.max(1, this.session.max("time") - this.session.min("time"));
 				this.min = this.session.min("time");
 
 				/**
@@ -171,7 +179,7 @@ export default {
 				 * duration so a fade triggered by the last click still has
 				 * room to play out. Must happen before render(), which takes
 				 * the duration as the slider maximum, and before
-				 * initAnimations() builds the slot map from it.
+				 * the animation index is built.
 				 */
 				this.collectScriptAnimations();
 
@@ -179,47 +187,38 @@ export default {
 				/**
 				 * init widget states
 				 */
-				 this.initWidgetStatesAndScroll();
+				 this._replayState = new ReplayStateIndex(this.events, this.getDefaultStates());
+				 const cancelled = () => request !== this._sessionRequest || this._isDestroyed;
+				 await this._replayState.build(cancelled);
+				 if (request !== this._sessionRequest || this._isDestroyed) return;
+				 for (let i = 0; i < this.events.length; i++) this.events[i]._replayIndex = i;
 
 
-				 /**
-				  * now build for all ui widgets a time series
-				  * with the states. for every event we have to know the
-				  * state of all widgets.
-				  */
-			 	 this.render();
+				 this.initMouseData();
+				 this.render();
 
 				 /**
 				  * init animations
 				  */
-				 this.initAnimations();
+				 await this.initSparseAnimations(cancelled);
+				 if (cancelled()) return;
 
 
-				 /**
-				  *
-				  */
-				 this.initMouseData();
-
-				 /**
-				  * Start ship up
-				  */
 				 this.lastEventPos =0;
 				 this.setTime(0);
 			} catch(e){
-				console.debug(e.err);
-				console.debug(e.stack);
+				console.error('VideoPlayer.setSession() > Error', e);
+			} finally {
+				if (request === this._sessionRequest) this.preparing = false;
 			}
-
-			//console.debug(this._widgetAnimationStates)
-
 		},
 
 		/**
-		 * Transform raw array based mouse data into time based lookup table
+		 * Index the recorded mouse samples without allocating slots for idle time.
 		 */
 		initMouseData(){
 			var maxMouse = 0;
-			var mouseStates = {};
+			var mouseStates = [];
 			if(this.mouseData){
 
 				var d = this.mouseData;
@@ -233,15 +232,15 @@ export default {
 							y : batch.y[j],
 							dur : batch.sample
 						}
-						var t  = this.getAnimationIndex(e.time-this.min);
-						mouseStates[t] = e;
-						maxMouse = Math.max(e.time)
+						mouseStates.push(e);
+						maxMouse = Math.max(maxMouse, e.time)
 					}
 				}
-				// delete this.mouseData
 				this.mouseData = null
 			}
+			mouseStates.sort((a, b) => a.time - b.time);
 			this._mouseStates = mouseStates;
+			this._lastMouseSample = null;
 			this.duration = Math.max( maxMouse-this.min, this.duration);
 		},
 
@@ -251,7 +250,7 @@ export default {
 		 * duration of the replay to cover them.
 		 *
 		 * The schedules are resolved against the model once here and reused by
-		 * initAnimations(), because a group animation has to be fanned out to
+		 * the animation index, because a group animation has to be fanned out to
 		 * its children to know how long the last of them takes, and both
 		 * passes have to agree on those delays.
 		 */
@@ -283,309 +282,16 @@ export default {
 			}
 		},
 
-
-		/**
-		 * This method will loop over all events and will calculate the state for all widgets
-		 */
-		initAnimations(){
-			this.logger.log(0, "initAnimations", "enter");
-
-			/**
-			 * we init this for all
-			 */
-			var aFac = new Animation();
-
-			/**
-			 * Init lookup table... for every possible timestamp we
-			 * have a slot. In each slot we have info for each widget
-			 */
-			this._widgetAnimationStates = {};
-			for(let i=0; i< this.duration;  i+=30){
-				this._widgetAnimationStates[i] = {}
-			}
-
-			/**
-			 * Init style holders
-			 */
-			var widgetInited = {};
-			var lastState = {};
-			this.styleIDCounter =0;
-
-			/**
-			 * Init pos holders
-			 */
-			var lastPos = {};
-			var widgetInitedPos = {};
-			this.posIDCounter =0;
-			var lastScreenLoadTimeStamp = 0;
-			for(let i=0; i <this.events.length;i++){
-				let event = this.events[i];
-				// let screenID = event.screen;
-				// let widgetID = event.widget;
-				// let widget = this.model.widgets[widgetID];
-				let start  = this.getAnimationIndex(event.time-this.min);
-
-				/**
-				 * Reset style because of screen load
-				 */
-				if(( event.type =="ScreenLoaded" || event.type =="OverlayLoaded")){
-
-					for(let j=start; j < this.duration; j+=30 ){
-
-						/**
-						 * Reset styles and pos
-						 */
-						// let widgets = this._widgetAnimationStates[j];
-						for(let id in widgetInited){
-							var orgStyle = widgetInited[id];
-							this._widgetAnimationStates[j][id].style = orgStyle;
-							lastState[id] = orgStyle;
-
-							var orgPos = widgetInitedPos[id];
-							this._widgetAnimationStates[j][id].pos = orgPos;
-							lastPos[id] = orgPos;
-						}
-
-
-					}
-					lastScreenLoadTimeStamp = start;
-				}
-
-
-				/**
-				 * FIXME: Add here some Screen and Animation index! Otherwise Clicks or
-				 * Animations might stop the ScreenAnimation!
-				 */
-				//if(event.type == "ScreenAnimation" ){
-				//}
-
-
-				if(event.type =="Animation"){
-					/**
-					 * The animation might have been triggered by the widgetID,
-					 * but it animated another widget, which is stored
-					 * in the event.animation.id
-					 */
-					var animWidgetId = event.animation.id;
-
-					var animWidget = this.model.widgets[animWidgetId];
-					if(animWidget){
-						/**
-						 * init the index with the original style as default. This should just be
-						 * a reference, therefore I hope it does not consume too much memory...
-						 */
-						if(!widgetInited[animWidgetId]){
-							let orginalStyle = this.initWidgetAnimation(animWidgetId, animWidget);
-							widgetInited[animWidgetId] = orginalStyle;
-							lastState[animWidgetId] = orginalStyle;
-
-							let orgPos = this.initWidgetAnimationPos(animWidgetId, animWidget);
-							widgetInitedPos[animWidgetId] = orgPos;
-							lastPos[animWidgetId] = orgPos;
-						}
-
-
-						var animation = event.animation;
-
-						var fromStyle = animation.from.style;
-						var toStyle = animation.to.style;
-
-
-						var fromPos = animation.from.pos;
-						if(fromPos){
-							fromPos = this.getAbsolutePosition(event.screen, fromPos);
-						}
-						var toPos = animation.to.pos;
-						if(toPos){
-							toPos = this.getAbsolutePosition(event.screen, toPos);
-						}
-						//console.debug("Animate ", start ,"/", this.duration , " => ", animation.duration + start);
-
-						var animationEnded = false;
-						var mixed;
-						var mixedPos;
-
-
-						/**
-						 * We have here a problem. The animations are started not with the correct
-						 * timestamp of we have onload animations!
-						 */
-						var startTimeStamp = start;
-						if(event.animation && event.animation.triggerType =="ScreenLoaded"){
-							startTimeStamp = lastScreenLoadTimeStamp;
-						}
-
-
-						/**
-						 * Now calculate the state from the *start* point on.
-						 * j is the rolling timestamp
-						 */
-						const endSlot = startTimeStamp + (animation.duration || 0) + 60
-						for(let j=startTimeStamp; j < this.duration; j+=30 ){
-							/**
-							 * The current time index for the animation. We substract start,
-							 * to make it start at 0
-							 */
-							let t = j - start;
-
-
-							/**
-							 * Get the p
-							 */
-							var p = 1;
-							if(animation.duration > 0){
-								if(animation.delay){
-									p = aFac.getP(t,animation.delay, animation.duration );
-								} else {
-									p = Math.min(1, t / animation.duration);
-								}
-							}
-
-							if(!animationEnded || !mixed){
-								/**
-								 * Here we call the factory to get the animated style
-								 */
-								mixed  =  aFac.getAnimationMixedStyle(fromStyle,toStyle, p );
-								mixed._aid = this.styleIDCounter++;
-								mixed._org = false;
-
-
-								/**
-								 * now mix with last state to have full state at every
-								 * point of time. The last state must be correctly initialized
-								 * with the org style!
-								 */
-								var last = lastState[animWidgetId];
-								for(var key in last){
-									if(mixed[key] == undefined){
-										//console.debug("-", j , "fill : ", key, mixed[key], " <- ", last[key])
-										mixed[key] = last[key];
-									}
-								}
-								lastState[animWidgetId] = lang.clone(mixed);
-
-
-								if(fromPos && toPos){
-
-									/**
-									 * Do calculate here the mixedPos
-									 */
-									mixedPos = aFac.getAnimationMixedPos(fromPos,toPos, p );
-									mixedPos._aid = this.posIDCounter++;
-									mixedPos._org = false;
-								} else {
-									mixedPos = null;
-								}
-							}
-
-							if(p >=1){
-								animationEnded = true;
-							}
-
-							if (j >= endSlot) {
-								/**
-								 * The animation is over. Do not smear its terminal style
-								 * over the rest of the replay; later slots keep the
-								 * original widget style.
-								 */
-								break;
-							}
-
-							this._widgetAnimationStates[j][animWidgetId].style = mixed;
-							if(mixedPos){
-								this._widgetAnimationStates[j][animWidgetId].pos = mixedPos;
-							}
-						}
-					} else {
-						console.warn("initAnimations() > No widgte", animWidgetId);
-					}
-				}
-
-				if(event.type == "ScriptEffect"){
-					/**
-					 * A script animation is recorded as a request, not as a
-					 * timeline: the worker that asked for it has no DOM, so
-					 * there is nothing in the event to interpolate. The frames
-					 * are built here, the way the Animation branch above does
-					 * it, with one difference: the style is kept after the end
-					 * as well. A fade leaves a state behind (shown, hidden),
-					 * it does not fall back to what was there before.
-					 */
-					var scriptSchedules = (event.id && this._scriptAnimationSchedules)
-						? this._scriptAnimationSchedules[event.id]
-						: null;
-					if(!scriptSchedules){
-						scriptSchedules = expandAnimations(this.model, getEventAnimations(event));
-					}
-					for(let s=0; s < scriptSchedules.length; s++){
-						var schedule = scriptSchedules[s];
-						var scriptWidgetID = schedule.id;
-						var scriptWidget = this.model.widgets[scriptWidgetID];
-						if(!scriptWidget){
-							continue;
-						}
-
-						/**
-						 * Seed the widget with its original style, exactly like
-						 * a recorded Animation event would. That is what makes
-						 * the ScreenLoaded reset above reach it, and what fills
-						 * the slots before the trigger.
-						 */
-						if(!widgetInited[scriptWidgetID]){
-							let orginalStyle = this.initWidgetAnimation(scriptWidgetID, scriptWidget);
-							widgetInited[scriptWidgetID] = orginalStyle;
-							lastState[scriptWidgetID] = orginalStyle;
-
-							let orgPos = this.initWidgetAnimationPos(scriptWidgetID, scriptWidget);
-							widgetInitedPos[scriptWidgetID] = orgPos;
-							lastPos[scriptWidgetID] = orgPos;
-						}
-
-						var orgScriptStyle = widgetInited[scriptWidgetID];
-						var scriptEndSlot = start + schedule.delay + schedule.duration;
-
-						/**
-						 * One object for all the slots after the end. It keeps
-						 * one _aid, so it is written to the DOM exactly once
-						 * and then leaves the frame alone, which is what lets a
-						 * script that hides the widget afterwards win again.
-						 */
-						var scriptEndStyle = getEndStyle(schedule, orgScriptStyle);
-						scriptEndStyle._aid = this.styleIDCounter++;
-						scriptEndStyle._org = false;
-
-						for(let j=start; j < this.duration; j+=30){
-							var scriptStyle;
-							if(j < scriptEndSlot){
-								scriptStyle = getFrameStyle(j - start, schedule, orgScriptStyle);
-								scriptStyle._aid = this.styleIDCounter++;
-								scriptStyle._org = false;
-							} else {
-								scriptStyle = scriptEndStyle;
-							}
-							if(this._widgetAnimationStates[j][scriptWidgetID]){
-								this._widgetAnimationStates[j][scriptWidgetID].style = scriptStyle;
-							}
-							lastState[scriptWidgetID] = scriptStyle;
-						}
-					}
-				}
-			}
-
-			/**
-			 * HACK: we remove now all animation so ScreenAnaimtions run through
-			 */
-			var temp = [];
-			for(let i=0; i <this.events.length;i++){
-				let event = this.events[i];
-				if(event.type !="Animation"){
-					temp.push(event)
-				}
-			}
-			this.events = temp;
-
-			this.logger.log(0, "initAnimations", "exit > " + this.styleIDCounter);
+		async initSparseAnimations (cancelled) {
+			this._animationIndex = new ReplayAnimationIndex(
+				this.events, this.model, this.min, this.duration, new Animation(),
+				(screen, pos) => this.getAbsolutePosition(screen, pos), this._scriptAnimationSchedules
+			);
+			await this._animationIndex.build(cancelled);
+			if (cancelled()) return;
+			this.events = this.events.filter(event => event.type !== 'Animation');
 		},
+
 
 		getAbsolutePosition(screenID, pos){
 			var screen = this.scaledModel.screens[screenID];
@@ -599,93 +305,6 @@ export default {
 				return result;
 			}
 		},
-
-
-		initWidgetAnimation(widgetID,widget ){
-
-
-			/**
-			 * create here a copy and set and "_aid" id field
-			 * so we can later do the change checking faster
-			 * (oldstyle._aid == newstyle._aid).
-			 */
-			var orginalStyle = lang.clone(widget.style);
-			orginalStyle._aid = this.styleIDCounter++;
-			orginalStyle._org = true;
-
-
-			for(var j=0; j< this.duration;  j+=30){
-				this._widgetAnimationStates[j][widgetID] = {
-					style :  orginalStyle
-				}
-			}
-
-			return orginalStyle;
-		},
-
-		initWidgetAnimationPos(widgetID){
-			var originalPos = {
-				x :0,
-				y: 0,
-				w: 0,
-				h: 0,
-				start:true
-			};
-			originalPos._aid = this.posIDCounter++;
-			originalPos._org = true;
-
-
-			for(var j=0; j< this.duration;  j+=30){
-				if(!this._widgetAnimationStates[j][widgetID]){
-					this._widgetAnimationStates[j][widgetID] = {};
-				}
-				this._widgetAnimationStates[j][widgetID].pos = originalPos;
-			}
-
-			return originalPos;
-		},
-
-		/**
-		 * This method will loop over all events and will calculate the state for all widgets
-		 */
-		initWidgetStatesAndScroll(){
-			this.logger.log(1, "initWidgetStatesAndScroll", "enter");
-
-			/**
-			 * we initialize with the default state of the widgets. We have an
-			 * states[screenID][widgetID][state] object. We do this because of the
-			 * radio buttons that we have to controll on a screen level...
-			 */
-			var defaultStates = this.getDefaultStates();
-
-			/**
-			 * The per event state projection itself is pure and lives in
-			 * ScriptStateReplay.js, so a jest test can walk a recorded session
-			 * without rendering widgets. The result also carries a second
-			 * table, the last value carrying state of every widget, which
-			 * setTime re-applies when a popup life cycle state (open, close,
-			 * validation) would otherwise be all a widget gets.
-			 */
-			var result = buildEventStates(this.events, defaultStates);
-
-			this._widgetStates = result.widgetStates;
-			this._widgetValueStates = result.valueStates;
-			this._scriptEffects = result.scriptEffects;
-			this._scriptData = result.scriptData;
-			this._touchedWidgets = result.touchedWidgets;
-			this._overLayStates = result.overlayStates;
-			this._scrollStates = result.scrollStates;
-
-			if (result.backfilled) {
-				console.log('backfilled screen onto ' + result.backfilled + ' event(s) that had none')
-			}
-
-			this.logger.log(2, "initWidgetStatesAndScroll", "exit");
-		},
-
-
-
-
 
 
 		/**
@@ -751,6 +370,7 @@ export default {
 
 		onBack(e){
 			this.stopEvent(e);
+			if (this.preparing) return;
 			this.currentTime =0;
 			this.lastEventPos = 0;
 			this.setTime(0);
@@ -758,6 +378,7 @@ export default {
 
 		onPlay(e){
 			this.stopEvent(e);
+			if (this.preparing) return;
 
 			/**
 			 * make sure we start from the beginning after we have ended!
@@ -886,28 +507,60 @@ export default {
 		},
 
 		renderEventList(){
+			this._visibleEvents = this.events.filter(e => !e.type || (!this.invisibleEvents[e.type] && !e.hidden));
+			this._eventPage = 0;
+			this.renderEventPage();
+		},
 
-			/**
-			 * Merge in annotation.tags
-			 */
-			var list = [];
-			for(let i=0; i< this.events.length; i++){
-				let e = this.events[i];
-				list.push(e);
-			}
-			list.sort(function(a,b){
-				return a.time - b.time;
-			});
+		renderEventPage(){
+			const list = this._visibleEvents;
+			const pageSize = 200;
+			const start = this._eventPage * pageSize;
+			const end = Math.min(start + pageSize, list.length);
 
 			this.eventCntr.innerHTML="";
 			this.cleanUpTempListener();
 
-			// var scroller = new ScrollContainer();
-			// scroller.placeAt(this.eventCntr);
-
 			var parent = document.createElement("div");
+			if (list.length > pageSize) {
+				const nav = document.createElement('div');
+				css.add(nav, 'MatcPlayerEventPages');
+				const previous = document.createElement('button');
+				previous.type = 'button';
+				previous.textContent = 'Previous';
+				previous.disabled = this._eventPage === 0;
+				const label = document.createElement('span');
+				label.textContent = `${start + 1}–${end} of ${list.length}`;
+				const page = document.createElement('input');
+				page.type = 'number';
+				page.min = '1';
+				page.max = String(Math.ceil(list.length / pageSize));
+				page.value = String(this._eventPage + 1);
+				page.setAttribute('aria-label', 'Event page');
+				const next = document.createElement('button');
+				next.type = 'button';
+				next.textContent = 'Next';
+				next.disabled = end === list.length;
+				nav.appendChild(previous);
+				nav.appendChild(label);
+				nav.appendChild(page);
+				nav.appendChild(next);
+				parent.appendChild(nav);
+				this.tempOwn(on(previous, 'click', () => { this._eventPage--; this.renderEventPage(); this.eventCntr.scrollTop = 0; }));
+				this.tempOwn(on(page, 'change', () => {
+					const number = Math.floor(Number(page.value));
+					if (number >= 1 && number <= Number(page.max)) {
+						this._eventPage = number - 1;
+						this.renderEventPage();
+						this.eventCntr.scrollTop = 0;
+					} else {
+						page.value = String(this._eventPage + 1);
+					}
+				}));
+				this.tempOwn(on(next, 'click', () => { this._eventPage++; this.renderEventPage(); this.eventCntr.scrollTop = 0; }));
+			}
 
-			for(let i=0; i< list.length; i++){
+			for(let i=start; i< end; i++){
 				let e = list[i];
 				let type = e.type;
 				if(type){
@@ -1012,6 +665,7 @@ export default {
 		},
 
 		onEvent(e){
+			if (this.preparing) return;
 			this.currentTime = e.time - this.min;
 			this.lastEventPos = 0;
 			this.preview.resetAnimations();
@@ -1021,6 +675,7 @@ export default {
 
 
 		onSliderChange(v){
+			if (this.preparing) return;
 			this.currentTime = v;
 			this.lastEventPos = 0;
 			this.preview.resetAnimations();
@@ -1050,6 +705,7 @@ export default {
 			 * Now get the event
 			 */
 			var event = this.getEvent(Math.floor(t));
+			if (!event) return;
 
 			/**
 			 * Same-millisecond batches collapse: a ScreenLoaded(N) followed
@@ -1074,6 +730,7 @@ export default {
 
 
 			try {
+				var replayState = this._replayState.get(event._replayIndex);
 				/**
 				 * Set screen or animate transition
 				 */
@@ -1109,7 +766,7 @@ export default {
 				 * correct overlay state resumes with the next non-transition event.
 
 				 */
-				var overlays = this._overLayStates[event.id];
+				var overlays = replayState.overlays;
 				if(overlays && event.type != "ScreenAnimation"){
 					this.preview.setOverlays(overlays);
 				}
@@ -1143,13 +800,13 @@ export default {
 				 * Apply visual effects produced by scripts before restoring the
 				 * ordinary widget states for this event.
 				 */
-				this.preview.setScriptEffectState(this._scriptEffects[event.id])
+				this.preview.setScriptEffectState(replayState.effects)
 
 				/**
 				 * now update widget states
 				 */
-				var states = this._widgetStates[event.id];
-				var valueStates = this._widgetValueStates ? this._widgetValueStates[event.id] : null;
+				var states = replayState.widgetStates;
+				var valueStates = replayState.valueStates;
 				for(var widgetID in states){
 					var state = states[widgetID];
 
@@ -1170,12 +827,12 @@ export default {
 				 * Apply script data bindings after the ordinary widget states,
 				 * so recorded data values win over static label defaults.
 				 */
-				this.preview.setScriptDataBindingState(this._scriptData[event.id], this._touchedWidgets[event.id])
+				this.preview.setScriptDataBindingState(replayState.data, replayState.touched)
 
 				/**
 				 * Set scroll
 				 */
-				this.setScroll(event, t);
+				this.setScroll(event, t, replayState.scroll);
 
 				this.setMouseCursor(event, t);
 
@@ -1184,13 +841,7 @@ export default {
 				 * fire widget animations
 				 */
 
-				var at = this.getAnimationIndex(t);
-				if(this._widgetAnimationStates[at]){
-					var animStates = this._widgetAnimationStates[at];
-					this.preview.setWidgetAnimationStates(animStates);
-				} else {
-					console.warn("setTime() > No animation data for time index", at)
-				}
+				this.preview.setWidgetAnimationStates(this._animationIndex.get(t));
 
 			} catch (err) {
 				console.warn("VideoPlayer.setTime() > Error", err)
@@ -1204,21 +855,32 @@ export default {
 
 
 		setMouseCursor(event, t){
-			var i  = this.getAnimationIndex(t);
-
-			if(this._mouseStates && this._mouseStates[i]){
-				this.preview.setMouse(this._mouseStates[i]);
+			const samples = this._mouseStates;
+			let low = 0;
+			let high = samples.length;
+			while (low < high) {
+				const mid = Math.floor((low + high) / 2);
+				if (samples[mid].time <= t + this.min) low = mid + 1;
+				else high = mid;
 			}
-
-
+			const sample = low ? samples[low - 1] : null;
+			if (!sample) {
+				this.preview.hideMouse();
+				this._lastMouseSample = null;
+				return;
+			}
+			if (sample !== this._lastMouseSample || event.screen !== this._lastMouseScreen) {
+				this.preview.setMouse(sample);
+				this._lastMouseSample = sample;
+				this._lastMouseScreen = event.screen;
+			}
 		},
 
-		setScroll(event, t){
+		setScroll(event, t, scrollState){
 
-			var scrollState = this._scrollStates[event.id];
 			if(scrollState){
 				if(scrollState.children){
-					if(!scrollState._ts){
+					if(!scrollState._scrollts){
 						scrollState._scrollts = this.createTimeSeries(scrollState.children)
 					}
 					t = t + this.min;
@@ -1259,23 +921,17 @@ export default {
 		},
 
 
-		/**
-		 * This method will return the event for the time stamp. It has a little tweak that it will start from the
-		 * last position, so that in theory we should have in the animation loop only 1 or 2 iterations in the loop.
-		 * However when clicking on the slider we have to set the lastEventPos to 0 so that we search all the array.
-		 */
+		/** Return the last event at or before the timestamp, including ties. */
 		getEvent(t){
-			var event = null;
-			for(var i= this.lastEventPos; i < this.events.length; i++){
-				var e = this.events[i];
-				var time = e.time - this.min;
-				if(time > t){
-					break;
-				}
-				event = e;
-				this.lastEventPos = i;
+			let low = 0;
+			let high = this.events.length;
+			while (low < high) {
+				const mid = Math.floor((low + high) / 2);
+				if (this.events[mid].time - this.min <= t) low = mid + 1;
+				else high = mid;
 			}
-			return event;
+			this.lastEventPos = Math.max(0, low - 1);
+			return low ? this.events[low - 1] : null;
 		},
 
 

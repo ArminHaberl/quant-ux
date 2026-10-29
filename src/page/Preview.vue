@@ -183,6 +183,7 @@ export default {
           this.domNode.appendChild(cntr);
           this._mousePointer = cntr;
         }
+        this._mousePointer.style.display = "";
         var x = event.x;
         var y = event.y;
 
@@ -207,6 +208,12 @@ export default {
           Math.round(y * screen.h),
           Math.round(x * screen.w)
         );
+      }
+    },
+
+    hideMouse: function() {
+      if (this._mousePointer) {
+        this._mousePointer.style.display = "none";
       }
     },
 
