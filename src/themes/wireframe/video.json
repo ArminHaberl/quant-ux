@@ -14,7 +14,8 @@
         "props": {
             "url": "",
             "fit": "contain",
-            "subtitle": ""
+            "subtitle": "",
+            "finishedPercentage": 100
         },
         "has": {
             "data": true,

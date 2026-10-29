@@ -257,6 +257,13 @@
 			  }
   
 		  },
+
+		  onVideoFinished (screenID, widgetID, lines) {
+			  const line = lines && this.getLineForGesture(lines, 'videoFinished');
+			  if (line) {
+				  this.executeLine(screenID, widgetID, line);
+			  }
+		  },
   
 		  onWidgetRerended (screenID, widgetID) {
 			  this.logger.log(-1,"onWidgetRerended","enter >  sreen:" + screenID + " > widget:" + widgetID);

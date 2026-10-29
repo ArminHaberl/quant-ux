@@ -2,7 +2,8 @@
     <div class="MatcWidgetTypeVideo">
         <video v-if="url" :key="url" ref="video" class="MatcWidgetTypeVideoEl"
             :src="url" :style="videoStyle"
-            :controls="mode !== 'edit'" playsinline preload="metadata">
+            :controls="mode !== 'edit'" playsinline preload="metadata"
+            @timeupdate="onVideoProgress" @seeked="onVideoProgress" @ended="onVideoProgress">
             <track v-if="subtitle" :src="subtitle" kind="subtitles"
                 srclang="en" label="Subtitles" :default="true" />
         </video>
@@ -14,6 +15,7 @@
 <script>
 import DojoWidget from "dojo/DojoWidget";
 import UIWidget from "core/widgets/UIWidget";
+import VideoCompletion from "core/widgets/VideoCompletion";
 
 export default {
     name: "Video",
@@ -67,6 +69,7 @@ export default {
     },
     methods: {
         postCreate() {
+            this._completion = new VideoCompletion();
             this._borderNodes = [this.$el];
             this._backgroundNodes = [this.$el];
             this._shadowNodes = [this.$el];
@@ -80,18 +83,31 @@ export default {
             this._scaleX = scaleX;
             this._scaleY = scaleY;
             const props = (model && model.props) || {};
-            this.url = props.url || '';
+            const url = props.url || '';
+            if (url !== this.url) {
+                this._completion.reset();
+            }
+            this.url = url;
             this.fit = props.fit || 'contain';
             this.subtitle = props.subtitle || '';
             this.setStyle(style, model);
         },
 
+        onVideoProgress(event) {
+            const video = event.target;
+            if (this.mode !== 'simulator' || video.getAttribute('src') !== this.url) {
+                return;
+            }
+            const props = (this.model && this.model.props) || {};
+            if (this._completion.update(video.currentTime, video.duration, props.finishedPercentage, event.type === 'ended')) {
+                this.emit('videoFinished');
+            }
+        },
+
         /**
-         * No resize() and no wireEvents() on purpose. The stylesheet already
-         * fills the widget box with width/height 100%, and the native control
-         * bar owns every interaction, so the widget has nothing to measure and
-         * nothing to listen for. It also has no getState(), so it stays out of
-         * the replay timeline like GeoLocation.
+         * The stylesheet fills the widget box and the native control bar owns
+         * playback. Video has no getState(), so it stays out of the replay
+         * timeline like GeoLocation.
          */
         getName() {
             return 'Video';

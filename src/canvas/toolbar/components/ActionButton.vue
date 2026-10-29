@@ -338,6 +338,9 @@ export default {
 				{ value: "swipeDown", label: "Down Swipe", icon: "EventSwipeDown" },
 				{ value: "scroll", label: "Scrolled in view", icon: "Scroll" }
 			]
+			if (isWidget && this.widget && this.widget.type === 'Video') {
+				triggers.push({ value: 'videoFinished', label: 'Video finished', icon: 'mdi mdi-play-circle-outline' });
+			}
 
 			/**
 			 * Screens have also a timer...

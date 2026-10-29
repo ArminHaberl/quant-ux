@@ -17,6 +17,7 @@ import OptionsList from 'common/OptionsList'
 import ScrollContainer from 'common/ScrollContainer'
 import _Tooltip from 'common/_Tooltip'
 import Util from 'core/Util'
+import { normalizeFinishedPercentage } from 'core/widgets/VideoCompletion'
 import ToolbarColor from './ToolbarColor'
 import InputDropDownButton from './InputDropDownButton'
 import ToolbarDropDownButton from './ToolbarDropDownButton'
@@ -244,6 +245,20 @@ export default {
 			this._renderInput(model.props, "url", "The URL of the video. Absolute or relative to this host.", "https://your.host/clip.mp4");
 			this._renderInput(model.props, "subtitle", "Optional subtitles, as a WebVTT (.vtt) URL. They show automatically and the language is English. Leave empty for no subtitles.", "https://your.host/clip.vtt");
 			this._renderInputDropDown("Aspect Fit", model, ['contain', 'cover'], "fit", true);
+			const row = this.db.div("MatcToobarRow ").build(this.cntr);
+			const dropDown = this.$new(InputDropDownButton);
+			dropDown.reposition = true;
+			dropDown.setLabelPostfix("   (Finished at %)");
+			dropDown.setOptions([25, 50, 75, 90, 100]);
+			dropDown.setValue(normalizeFinishedPercentage(model.props.finishedPercentage));
+			dropDown.placeAt(row);
+			this.addTooltip(row, 'Fire Video finished when playback reaches this percentage. Seeking forward counts.');
+			this.tempOwn(on(dropDown, "change", value => {
+				const percentage = normalizeFinishedPercentage(value);
+				dropDown.setValue(percentage);
+				this.onProperyChanged('finishedPercentage', percentage);
+			}));
+			this._addChildWidget(dropDown);
 		},
 
 		_showScreenSegment  (widget) {

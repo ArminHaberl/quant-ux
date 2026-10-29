@@ -570,6 +570,9 @@
 				  this.tempOwn(uiWidget.on("focus", lang.hitch(this, "onWidgetFocus", screen.id, widget.id, w)));
 				  this.tempOwn(uiWidget.on("blur", lang.hitch(this, "onWidgetBlur", screen.id, widget.id, w)));
 				  this.tempOwn(uiWidget.on("keyUp", lang.hitch(this, "onWidgetKeyUp", screen.id, widget.id)));
+				  if (widget.type === 'Video') {
+					  this.tempOwn(uiWidget.on('videoFinished', lang.hitch(this, 'onVideoFinished', screenId, widget.id, lines)));
+				  }
   
 				  /**
 				  * Gestures
