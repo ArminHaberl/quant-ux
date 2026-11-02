@@ -8,6 +8,7 @@ import * as ScriptToModel from '../../core/engines/ScriptToModel'
 import * as ScriptAnimations from '../../core/engines/ScriptAnimations'
 import Animation from '../../core/Animation'
 import lang from 'dojo/_base/lang'
+import { isNavigationActive } from 'core/simulator/BeforeLoad'
 
 export default {
   name: 'ScriptMixin',
@@ -98,17 +99,17 @@ export default {
         return this._scriptsDataBinding
     },
 
-    async executeScript (widgetID, orginalLine) {
+    async executeScript (widgetID, orginalLine, navigation) {
         this.logger.log(-2,"executeScript","enter >" + widgetID);
         const widget = this.model.widgets[widgetID]
         if (widget && widget.props.script) {
-            const result = await this.runScript(widget.props.script, widget, orginalLine)
+            const result = await this.runScript(widget.props.script, widget, orginalLine, navigation)
             return result
         } else {
             this.logger.error("executeScript","exit > could not find " + widgetID);
         }
     },
-    async runScript (script, widget, orginalLine) {
+    async runScript (script, widget, orginalLine, navigation) {
         this.logger.log(2,"runScript","enter", widget?.name);
         const dataBefore = lang.clone(this.dataBindingValues || {})
 
@@ -125,15 +126,23 @@ export default {
         const result = await engine.run(script, this.model, this.dataBindingValues, event).then()
 
         if (result && result.status === 'ok') {
-            return new Promise((resolve) => {
+            return new Promise((resolve, reject) => {
                 requestAnimationFrame( () => {
-                    this.vibrate(result)
-                    this.renderAppChanges(result)
-                    this.renderScriptDataBinding(result)
-                    this.logScriptEffect(result, widget, dataBefore)
-                    this.renderScriptTo(result, widget, orginalLine)
-                    this.logger.log(1,"runScript","exit");
-                    resolve(result)
+                    try {
+                        if (navigation && navigation.beforeLoad && !isNavigationActive(this, navigation)) {
+                            resolve(result)
+                            return
+                        }
+                        this.vibrate(result)
+                        this.renderAppChanges(result)
+                        this.renderScriptDataBinding(result)
+                        this.logScriptEffect(result, widget, dataBefore)
+                        const transition = this.renderScriptTo(result, widget, orginalLine, navigation)
+                        this.logger.log(1,"runScript","exit");
+                        Promise.resolve(transition).then(() => resolve(result), reject)
+                    } catch (error) {
+                        reject(error)
+                    }
                 })
             })
         }
@@ -269,9 +278,9 @@ export default {
            this.replaceDataBinding(result.viewModel)
         }
     },
-    renderScriptTo (result, widget, orginalLine) {
+    renderScriptTo (result, widget, orginalLine, navigation) {
         this.logger.log(2,"renderScriptResult","enter >" ,  orginalLine);
-        if (!this.currentScreen && result.to) {
+        if (!this.currentScreen && result.to && !(navigation && navigation.beforeLoad)) {
             // FIXME: This happens when a load script fires returns
             // before the page was rendered. Maybe change the ordering??
             this.logger.error("renderScriptResult","no currentscreen");
@@ -293,10 +302,11 @@ export default {
             const targetScreen = Object.values(this.model.screens).find(s => s.name === result.to)
             if (targetScreen) {
                 const tempLine = this.createTempLine(targetScreen.id, orginalLine)
+                const screenID = this.currentScreen ? this.currentScreen.id : navigation.sourceScreenID
                 if(targetScreen.style.overlay){
-					this.renderOverlay(tempLine, this.currentScreen.id);
+					return this.renderOverlay(tempLine, screenID, false, navigation);
                 } else {
-                    this.renderTransition(tempLine,this.currentScreen.id);
+                    return this.renderTransition(tempLine, screenID, false, navigation);
                 }
             } else {
                 this.logger.log(1,"runScript","No screen with name  >" + result.to);
@@ -309,7 +319,12 @@ export default {
             const lines = this.getLinesForWidget(widget);
             if (lines && lines.length === 1) {
                 const tempLine = this.createTempLine(lines[0].to, orginalLine)
-                this.renderTransition(tempLine,this.currentScreen.id);
+                const screenID = this.currentScreen ? this.currentScreen.id : navigation && navigation.sourceScreenID
+                if (navigation && navigation.beforeLoad) {
+                    return this.executeLine(screenID, widget.id, tempLine, navigation)
+                } else if (this.currentScreen) {
+                    return this.renderTransition(tempLine, screenID);
+                }
             }
         }
     },

@@ -8,7 +8,7 @@
 	  name: 'AudioMixin',
 	  methods: {
   
-        executeAudio(widgetID) {
+        executeAudio(widgetID, originalLine, navigation) {
             this.logger.log(-2,"executeAudio","enter >  widgetID:" + widgetID);
             const widget = this.model.widgets[widgetID]
             if (widget && widget.props?.file?.url) {
@@ -28,7 +28,12 @@
 
                     const lines = this.getLinesForWidget(widget);
                     if (lines && lines.length === 1) {        
-                        this.renderTransition(lines[0],this.currentScreen.id);
+                        const screenID = this.currentScreen ? this.currentScreen.id : navigation && navigation.sourceScreenID
+                        if (navigation && navigation.beforeLoad) {
+                            this.executeLine(screenID, widgetID, lines[0], navigation)
+                        } else if (this.currentScreen) {
+                            this.renderTransition(lines[0], screenID);
+                        }
                     }
                 })
             

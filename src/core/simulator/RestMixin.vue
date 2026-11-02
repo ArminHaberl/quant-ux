@@ -4,6 +4,7 @@
 </template>
 <script>
 import RestEngine from 'core/RestEngine'
+import { isNavigationActive } from 'core/simulator/BeforeLoad'
 
 export default {
 	name: 'RestMixin',
@@ -74,7 +75,7 @@ export default {
     },
 
 
-    async executeRest (widget) {
+    async executeRest (widget, navigation) {
       this.logger.log(1,"executeRest","enter >  rest:" + widget.id);
 
       const rest = widget.props.rest
@@ -91,15 +92,19 @@ export default {
 
       try {
         const result = await RestEngine.run(rest, data)
+        if (navigation && navigation.beforeLoad && !isNavigationActive(this, navigation)) return false
         const databinding = rest.output && rest.output.databinding
         if (databinding) {
           this.setDataBindingByKey(databinding, result)
           // since 4.0.70 we also can the data binding...
-          this.updateAllDataBindings(this.currentScreen.id, databinding, result)
+          if (this.currentScreen) {
+            this.updateAllDataBindings(this.currentScreen.id, databinding, result)
+          }
           this.logger.log(-1, "executeRest","set data " + databinding, this.dataBindingValues);
         }
         return true
       } catch (e) {
+        if (navigation && navigation.beforeLoad && !isNavigationActive(this, navigation)) return false
         /**
          * Guarded the same way as the try branch: dereferencing rest.output
          * here threw a second TypeError out of the catch, which rejected

@@ -37,6 +37,7 @@
   import ScriptMixin from 'core/simulator/ScriptMixin'
   import TooltipMixin from 'core/simulator/TooltipMixin'
   import Preloader from 'core/simulator/Preloader'
+  import { beginNavigation, interceptBeforeLoad, isNavigationActive, recordNavigationLine } from 'core/simulator/BeforeLoad'
   import Splash from '../views/simulator/Splash.vue'
 
   
@@ -577,10 +578,12 @@
 			  this.logger.log(0,"onTransitionBack","enter >  sreen:" + screenID + " > widget:" + widgetID);
 			  this.stopEvent(e);
 			  this.log("WidgetClick",screenID, widgetID, e);
-			  const lastScreenLine = this.screenHistory.pop();
+			  const navigation = beginNavigation(this);
+			  const lastScreenLine = this.screenHistory[this.screenHistory.length - 1];
 			  if(lastScreenLine){
   
 				  if(this.currentOverlay){
+					  this.screenHistory.pop();
 					  this.popOverlay();
 				  } else {
   
@@ -611,11 +614,16 @@
 						  /**
 						   * New we fire the line
 						   */
-						  if(screen.style.overlay){
-							  this.renderOverlay(backLine, lastScreenID); // FIXME: was line before
-						  } else {
-							  this.renderTransition(backLine,lastScreenID);
-						  }
+						  const resume = () => {
+							  if (this.screenHistory[this.screenHistory.length - 1] === lastScreenLine) this.screenHistory.pop();
+							  navigation.historyRecorded = true;
+							  if(screen.style.overlay){
+								  return this.renderOverlay(backLine, lastScreenID, false, navigation);
+							  }
+							  return this.renderTransition(backLine, lastScreenID, false, navigation);
+						  };
+						  if (interceptBeforeLoad(this, screen, navigation, resume)) return;
+						  return resume();
 					  }
   
 				  }
@@ -629,7 +637,9 @@
 			  this.executeLine(screenID, widgetID, line);
 		  },
   
-		  executeLine (screenID, widgetID, line){
+		  executeLine (screenID, widgetID, line, navigation){
+			  navigation = beginNavigation(this, navigation);
+			  if (!isNavigationActive(this, navigation)) return;
 			  /**
 			   * Make sure we flush the output binding in case
 			   * the widget is in a container. 
@@ -646,28 +656,22 @@
 			  if(this.canPerformTransition(line, screenID)){
 				  const screen = this.model.screens[line.to];
 				  if(screen){
-					  /**
-					   * Store the screen because of onWidgetInit
-					   */
-					  this.loadingScreen = screen;
-					  if(screen.style.overlay){
-						  this.logLine(line, screenID);
-						  this.renderOverlay(line, screenID);
-					  } else {
-						  this.logLine(line, screenID);
-						  this.renderTransition(line,screenID);
-					  }
+					  const resume = () => this.navigateLineToScreen(screenID, line, screen, navigation);
+					  if (interceptBeforeLoad(this, screen, navigation, resume)) return;
+					  return resume();
 				  } else {
 					  /**
 					   * We might have a logic widget in here
 					   */
 					  const widget = this.model.widgets[line.to];
 					  if(widget){
-						  this.logLine(line, screenID);
+						  if (!navigation.beforeLoad) {
+							  recordNavigationLine(this, line, screenID, navigation);
+						  }
 						  if (line.scroll) {
 							this.executeScroll(screenID, widgetID, widget, line);
 						  } else {
-							this.executeLogic(screenID, widgetID, widget, line);
+							return this.executeLogic(screenID, widgetID, widget, line, navigation);
 						  }
 
 					  } else {
@@ -677,6 +681,12 @@
 			  } else {
 				  this.log("ValidationErrorLine",screenID, widgetID);
 			  }
+		  },
+
+		  navigateLineToScreen (screenID, line, screen, navigation) {
+			  if (!navigation.beforeLoad) recordNavigationLine(this, line, screenID, navigation);
+			  if (screen.style.overlay) return this.renderOverlay(line, screenID, false, navigation);
+			  return this.renderTransition(line, screenID, false, navigation);
 		  },
 
 		  executeScroll (screenID, widgetID, widget, orginalLine) {
@@ -701,14 +711,14 @@
 		   *
 		   * 3) If no line with a rule matches the *FIRST* line will be executed
 		   */
-		  async executeLogic (screenID, widgetID, widget, orginalLine){
+		  async executeLogic (screenID, widgetID, widget, orginalLine, navigation){
 			  this.logger.log(1,"executeLogic","enter >  " + widget.id + ' '+ widget.type );
   
 			  /**
 			   * Script are fired and then we return
 			   */
 			  if (widget.props.script) {
-				  await this.executeScript(widget.id, orginalLine)
+				  await this.executeScript(widget.id, orginalLine, navigation)
 				  return
 			  }
 
@@ -717,7 +727,7 @@
 			   * Audio are fired and then we return
 			   */
 			   if (widget.type === 'AudioLogic') {
-				  await this.executeAudio(widget.id, orginalLine)
+				  await this.executeAudio(widget.id, orginalLine, navigation)
 				  return
 			  }
   
@@ -728,8 +738,9 @@
 			   */
 			  let restSuccess = false
 			  if (widget.props && widget.props.rest) {
-				  restSuccess = await this.executeRest(widget, orginalLine)
+				  restSuccess = await this.executeRest(widget, navigation)
 			  }
+			  if (!isNavigationActive(this, navigation)) return
   
 			  /**
 			   * Get all lines in the correct order
@@ -742,7 +753,7 @@
 				   */
 				  if (this.abSelector) {
 					  this.abSelector(lines, (matchedLIne) => {
-						  this.excuteMatchedLine(matchedLIne, screenID, orginalLine)
+						  this.excuteMatchedLine(matchedLIne, screenID, orginalLine, navigation)
 					  })
 					  this.logger.warn("executeLogic"," delagte to external selctor!");
 					  return
@@ -755,7 +766,7 @@
 				  matchedLine = this.getRuleMatchingLine(lines, screenID, restSuccess)
 			  }
   
-			  this.excuteMatchedLine(matchedLine, screenID, orginalLine)
+			  return this.excuteMatchedLine(matchedLine, screenID, orginalLine, navigation)
 		  },
   
 		  getABLine (lines, widget) {
@@ -831,8 +842,9 @@
 			  }
 		  },
   
-		  excuteMatchedLine (matchedLine, screenID, orginalLine) {
+		  excuteMatchedLine (matchedLine, screenID, orginalLine, navigation) {
 			console.debug('excuteMatchedLine', matchedLine)
+			  if (!isNavigationActive(this, navigation)) return;
 			  if (matchedLine){
 				  const screen = this.model.screens[matchedLine.to];
 				  if(screen){
@@ -840,14 +852,10 @@
 					  newLine.animation = orginalLine.animation;
 					  newLine.duration = orginalLine.duration;
   
-					  /**
-					   * Store the screen because of onWidgetInit
-					   */
-					  this.loadingScreen = screen;
 					  if(screen.style.overlay){
-						  this.renderOverlay(newLine, screenID);
+						  return this.renderOverlay(newLine, screenID, false, navigation);
 					  } else {
-						  this.renderTransition(newLine,screenID);
+						  return this.renderTransition(newLine, screenID, false, navigation);
 					  }
 				  } else {
 					  /**
@@ -856,8 +864,8 @@
 					  const widget = this.model.widgets[matchedLine.to];
 					  console.debug('excuteMatchedLine', widget)
 					  if(widget){
-						  this.logLine(matchedLine, screenID);
-						  this.executeLogic(screenID, matchedLine.from, widget, matchedLine);
+						  if (!navigation || !navigation.beforeLoad) recordNavigationLine(this, matchedLine, screenID, navigation);
+						  return this.executeLogic(screenID, matchedLine.from, widget, matchedLine, navigation);
 					  } else {
 						  console.warn("excuteMatchedLine() > No screen or logic widget with id "+ matchedLine.to)
 					  }
@@ -1180,4 +1188,3 @@
 	  }
   }
   </script>
-  

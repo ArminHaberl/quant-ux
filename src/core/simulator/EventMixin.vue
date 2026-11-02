@@ -9,6 +9,7 @@
   import css from 'dojo/css'
   import ModelUtil from 'core/ModelUtil'
   import * as WorkFlowEngine from './WorkFlowEngine'
+  import { getBeforeLoadLine } from './BeforeLoad'
   
   export default {
 	  name: 'EventMixin',
@@ -589,7 +590,9 @@
 			  if(!this._screenGestureAnim){
 				  var screen = this.model.screens[line.to];
 				  if(screen){
-					  this.loadingScreen = screen;
+					  // Do not start a speculative swipe animation for a blocked screen.
+					  // The completed gesture will execute the link normally.
+					  if (getBeforeLoadLine(this, screen)) return
 					  if(screen.style.overlay){
 						  this._screenGestureAnim = this.renderOverlay(line, screenID, true);
 					  } else {

@@ -10,6 +10,7 @@
   import on from 'dojo/on'
   import domGeom from 'dojo/domGeom'
   import win from 'dojo/win'
+  import { beginNavigation, interceptBeforeLoad, isNavigationActive, recordBeforeLoadNavigation } from 'core/simulator/BeforeLoad'
   
   export default {
 	  name: 'RenderMixin',
@@ -43,8 +44,13 @@
 		  /**
 		  * The default method to show a screen without any animation
 		  */
-		  renderScreen (screen, line){
+		  renderScreen (screen, line, navigation){
+			  navigation = beginNavigation(this, navigation)
+			  if (!isNavigationActive(this, navigation)) return
 			  this.logger.log(-4,"renderScreen","enter > " + screen.id + " / " + screen.name);
+			  if (interceptBeforeLoad(this, screen, navigation, () => this.renderScreen(screen, line, navigation))) return
+			  recordBeforeLoadNavigation(this, line, navigation)
+			  this.loadingScreen = screen
   
 			  this.setSystemVariable('screen', screen.name)
   
@@ -104,8 +110,13 @@
 			  // can be overwritten
 		  },
   
-		  renderScreenOverlay (overlay, line){
+		  renderScreenOverlay (overlay, line, navigation){
+			  navigation = beginNavigation(this, navigation)
+			  if (!isNavigationActive(this, navigation)) return
 			  this.logger.log(3,"renderScreenOverlay","enter > " + overlay.id);
+			  if (interceptBeforeLoad(this, overlay, navigation, () => this.renderScreenOverlay(overlay, line, navigation))) return
+			  recordBeforeLoadNavigation(this, line, navigation)
+			  this.loadingScreen = overlay
   
 			  this.setSystemVariable('overlay', overlay.name)
   
@@ -888,11 +899,16 @@
 			  this.currentScreenDiv.appendChild(node);
 		  },
   
-		  renderTransition (line, screenID, isGestureAnimation){
+		  renderTransition (line, screenID, isGestureAnimation, navigation){
+			  navigation = beginNavigation(this, navigation)
+			  if (!isNavigationActive(this, navigation)) return
 			  this.logger.log(-1,"renderTransition","enter > from " + screenID + " to " + line.to);
 			  let to = line.to;
 			  const screen = this.model.screens[to];
 			  if (screen){
+				  if (interceptBeforeLoad(this, screen, navigation, () => this.renderTransition(line, screenID, isGestureAnimation, navigation))) return
+				  recordBeforeLoadNavigation(this, line, navigation)
+				  this.loadingScreen = screen
 			  
 				  this.flushMouse(true);
 				  if (line.animation) {
@@ -966,7 +982,7 @@
 					  * default behavior. We remove the screen and render the new one
 					  */
 					  this.logger.log(4,"renderTransition","default");
-					  this.renderScreen(screen, line);
+					  this.renderScreen(screen, line, navigation);
 				  }
   
 			  } else {
@@ -974,11 +990,16 @@
 			  }
 		  },
   
-		  renderOverlay (line, screenID, isGestureAnimation){
+		  renderOverlay (line, screenID, isGestureAnimation, navigation){
+			  navigation = beginNavigation(this, navigation)
+			  if (!isNavigationActive(this, navigation)) return
 			  this.logger.log(2,"renderOverlay","enter > from " + screenID + " to " + line.to);
 			  const to = line.to;
 			  const overlay = this.model.screens[to];
 			  if (overlay){
+				  if (interceptBeforeLoad(this, overlay, navigation, () => this.renderOverlay(line, screenID, isGestureAnimation, navigation))) return
+				  recordBeforeLoadNavigation(this, line, navigation)
+				  this.loadingScreen = overlay
 				  this.flushMouse(true);
   
 				  if (line.animation){
@@ -1029,7 +1050,7 @@
 					  * default behavior. We remove the screen and render the new one
 					  */
 					  this.logger.log(0,"renderOverlay","default");
-					  this.renderScreenOverlay(overlay, line);
+					  this.renderScreenOverlay(overlay, line, navigation);
 				  }
 			  } else {
 				  console.error("No screen with ", to);

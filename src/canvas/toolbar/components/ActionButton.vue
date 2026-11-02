@@ -48,6 +48,7 @@ export default {
 		},
 
 		setScreen(screen) {
+			this.widget = null;
 
 			this.domUtil.removeAllChildNodes(this.domNode)
 			this.cleanUpTempListener();
@@ -352,6 +353,7 @@ export default {
 				}
 				triggers.push({ value: "timer", label: timerLbl, icon: "EventTimer", callback2: lang.hitch(this, "onTimerSelected", btn, line) });
 				triggers.push({ value: "loaded", label: 'Loaded', icon: "EventLoaded" });
+				triggers.push({ value: "beforeLoad", label: 'Before load', icon: "EventLoaded" });
 			} else {
 				triggers.push({ value: "hover", label: "Hover", icon: "EventHover" });
 			}

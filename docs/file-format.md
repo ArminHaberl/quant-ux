@@ -229,6 +229,8 @@ You can find detailed exampels in the [templates](https://github.com/KlausSchaef
 
 A line is defined by its start (**from**) and end (**to**). In addition the trigger event is defined. The **points** property can be ignored. Please note that groups can be also referenced in the from node.
 
+Screen links may use the `beforeLoad` event. When a screen or overlay is about to open, its first `beforeLoad` link runs before the screen is rendered. The linked action can continue the pending navigation by choosing the same screen, redirect to another screen, or leave the screen unopened by choosing no destination. The trigger is bypassed only for that continuation and runs again on a later visit. A screen with no such link loads normally; the `loaded` event continues to run after the screen has been created.
+
 ```json
 {
       "id" : "l10014",
@@ -251,4 +253,3 @@ Groups define a set of contained widgets by their **children** property. Groups 
       "name" : "Group"
     }
 ```
-
