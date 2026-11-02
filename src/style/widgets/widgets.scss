@@ -870,7 +870,6 @@
 
 .MatcWidgetTypeRadioGroup .MatcWidgetTypeRadioBox{
 	display: inline-block;
-	vertical-align: center;
 }
 
 /*******************************
@@ -889,16 +888,18 @@
 .MatcWidgetTypeCheckBoxRow{
 	width: 100%;
 	position: absolute;
+	display: flex;
+	align-items: center;
 }
 
-.MatcWidgetTypeCheckBoxRow .MatcWidgetTypeCheckBox{
-	display: inline-block;
-	vertical-align: center;
+.MatcWidgetTypeCheckBoxRow > .MatcWidgetTypeCheckBox,
+.MatcWidgetTypeCheckBoxRow > .MatcWidgetTypeRadioBox{
+	box-sizing: border-box;
+	flex-shrink: 0;
 }
 
 .MatcWidgetTypeCheckBoxLabel{
 	display: inline-block;
-	vertical-align: center;
 	cursor: pointer;
 }
 

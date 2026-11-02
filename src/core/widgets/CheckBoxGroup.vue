@@ -100,7 +100,7 @@ export default {
     setChildSize(model, style) {
       var w = this._getBorderWidth(style.boxHeight);
       var length = this._borderNodes.length;
-      var top = (model.h - length * w) / (length - 1);
+      var top = length > 1 ? (model.h - length * w) / (length - 1) : 0;
       var marginRight = this._getBorderWidth(style.boxMarginRight);
 
       for (var i = 0; i < length; i++) {
