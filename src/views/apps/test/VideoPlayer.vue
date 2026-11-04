@@ -44,7 +44,7 @@ import Core from 'core/Core'
 import Services from 'services/Services'
 import { getEventAnimations, expandAnimations } from 'core/engines/ScriptAnimationReplay'
 import { isLifecycleState } from 'core/engines/ScriptStateReplay'
-import ReplayStateIndex from 'core/engines/ReplayStateIndex'
+import ReplayStateIndex, { replayFrameTime } from 'core/engines/ReplayStateIndex'
 import ReplayAnimationIndex from 'core/engines/ReplayAnimationIndex'
 
 export default {
@@ -62,6 +62,7 @@ export default {
             invisibleEvents: {
 				"Animation": true,
 				"SessionStart": true,
+				"SessionResume": true,
 				"ScreenAnimation": true,
 				"OverlayShowAnimation": true,
 				"OverlayRemoveAnimation": true,
@@ -570,7 +571,9 @@ export default {
 						css.add(item, "MatcPlayerEvent");
 						css.add(item, e.type);
 						var txt = this.getMinute(e.time -this.min);
-						if(type == "WidgetClick" || type == "WidgetChange" || type=="ValidationError" || type=="ValidationErrorLine"){
+						if (type === 'SessionReload') {
+							txt += ' - Page reloaded';
+						} else if(type == "WidgetClick" || type == "WidgetChange" || type=="ValidationError" || type=="ValidationErrorLine"){
 							if(e.state && (type == "WidgetClick" || type == "WidgetChange" )){
 								txt += " - " +  this.getEventStateLabel(e.state);
 							} else {
@@ -706,6 +709,9 @@ export default {
 			 */
 			var event = this.getEvent(Math.floor(t));
 			if (!event) return;
+			// The timeline continues in real time while the browser is reloading,
+			// but composite widget states and animations must hold their last frame.
+			t = replayFrameTime(event, t, this.min);
 
 			/**
 			 * Same-millisecond batches collapse: a ScreenLoaded(N) followed

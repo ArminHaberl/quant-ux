@@ -50,6 +50,7 @@ export default {
 		},
 
 		log (type, screenID, widgetID, e, widgetEvent){
+			if (this._restoringSession) return
 			this.logger.log(2,"log","enter > type:" + type+ " > sreen:" + screenID + " > widget:" + widgetID);
 
 			topic.publish("MatcSimulatorEvent", type, screenID, widgetID);
@@ -120,6 +121,7 @@ export default {
 			}
 
 			this.emit("event", event);
+			this.scheduleSessionCheckpoint()
 		},
 
 

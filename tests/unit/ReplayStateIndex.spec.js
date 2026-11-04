@@ -1,4 +1,4 @@
-import ReplayStateIndex from '../../src/core/engines/ReplayStateIndex'
+import ReplayStateIndex, { replayFrameTime } from '../../src/core/engines/ReplayStateIndex'
 import { buildEventStates } from '../../src/core/engines/ScriptStateReplay'
 
 const copy = value => JSON.parse(JSON.stringify(value))
@@ -72,4 +72,44 @@ test('nested script data survives seeking before and after a change', async () =
     expect(index.get(2).data.user.name).toBe('Grace')
     expect(index.get(1).data.user.name).toBe('Ada')
     expect(index.get(2).data.user.name).toBe('Grace')
+})
+
+/** Reloading while typing lost the unfinished value and open overlay in replay. */
+test('reload snapshots hold state during the gap and restore it when seeking', async () => {
+    const events = [
+        { type: 'ScreenLoaded', screen: 's', time: 10 },
+        { type: 'ScreenScroll', screen: 's', time: 20, state: { type: 'scroll', value: 0.1 } },
+        { type: 'SessionReload', screen: 's', time: 30, state: { type: 'resume', value: {
+            widgets: [{ id: 'input', state: { type: 'text', value: 'unfinished' } }], overlays: ['dialog'], scroll: 0.4
+        } } },
+        { type: 'SessionResume', screen: 's', time: 100, state: { type: 'resume', value: {
+            widgets: [{ id: 'input', state: { type: 'text', value: 'unfinished' } }], overlays: ['dialog'], scroll: 0.4
+        } } },
+        { type: 'WidgetChange', screen: 's', widget: 'input', time: 110, state: { type: 'text', value: 'finished' } }
+    ]
+    const index = new ReplayStateIndex(events, { s: { input: { type: 'text', value: '' } } })
+    await index.build()
+    expect(index.get(2).widgetStates.input.value).toBe('unfinished')
+    expect(index.get(2).overlays).toEqual(['dialog'])
+    expect(index.get(2).scroll.value).toBe(0.4)
+    expect(index.get(4).widgetStates.input.value).toBe('finished')
+    expect(index.get(3).widgetStates.input.value).toBe('unfinished')
+    expect(index.get(0).widgetStates.input.value).toBe('')
+    expect(replayFrameTime(events[2], 60, 10)).toBe(20)
+    expect(replayFrameTime(events[3], 90, 10)).toBe(90)
+})
+
+/** A reload must project the script's final visibility without replaying the script. */
+test('resume applies saved script effects only after the reload gap', async () => {
+    const changes = [{ type: 'Widget', id: 'input', key: 'style', value: { display: 'none' } }]
+    const events = [
+        { type: 'ScreenLoaded', screen: 's' },
+        { type: 'SessionReload', screen: 's', state: { type: 'resume', value: {} } },
+        { type: 'SessionResume', screen: 's', state: { type: 'resume', value: { scriptChanges: changes } } }
+    ]
+    const index = new ReplayStateIndex(events, { s: { input: { type: 'text', value: '' } } })
+    await index.build()
+    expect(index.get(1).effects).toEqual({})
+    expect(index.get(2).effects.input.style.display).toBe('none')
+    expect(index.get(1).effects).toEqual({})
 })

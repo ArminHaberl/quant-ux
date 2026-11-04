@@ -29,6 +29,7 @@ function reportFailure (simulator, result) {
 
 /** Intercept an attempt before any screen rendering or cleanup takes place. */
 export function interceptBeforeLoad (simulator, screen, context, resume) {
+    if (simulator._restoringSession) return false
     const navigation = beginNavigation(simulator, context)
     if (!isNavigationActive(simulator, navigation)) return true
     if (!screen) return false

@@ -51,6 +51,7 @@ export default class ReplayAnimationIndex {
         const { events, model, min, duration, factory, absolutePosition, schedules } = this.options
         let nextID = 0
         let lastScreenLoad = 0
+        const resumedStyles = {}
         const init = id => {
             if (!this.widgets[id]) {
                 const style = Object.assign({}, lang.clone(model.widgets[id].style), { _aid: `original-${id}`, _org: true })
@@ -73,9 +74,10 @@ export default class ReplayAnimationIndex {
             if (event.type === 'ScreenLoaded' || event.type === 'OverlayLoaded') {
                 for (const id in this.widgets) {
                     const widget = this.widgets[id]
-                    assign(widget.styles, start, Infinity, () => widget.originalStyle)
+                    const style = resumedStyles[id] || widget.originalStyle
+                    assign(widget.styles, start, Infinity, () => style)
                     assign(widget.positions, start, Infinity, () => widget.originalPos)
-                    widget.lastStyle = widget.originalStyle
+                    widget.lastStyle = style
                 }
                 lastScreenLoad = start
             }
@@ -120,8 +122,27 @@ export default class ReplayAnimationIndex {
             if (event.type === 'ScriptEffect') {
                 const list = event.id && schedules && schedules[event.id]
                     ? schedules[event.id] : expandAnimations(model, getEventAnimations(event))
+                const animatedIDs = new Set(list.map(schedule => schedule.id))
+                const changes = event.state && event.state.value && event.state.value.widgetChanges || []
+                changes.forEach(change => {
+                    if (!change || change.key !== 'style' || !change.value || !resumedStyles[change.id] || animatedIDs.has(change.id)) return
+                    const widget = init(change.id)
+                    const style = Object.assign({}, resumedStyles[change.id], change.value)
+                    if (Object.prototype.hasOwnProperty.call(change.value, 'display') &&
+                        !Object.prototype.hasOwnProperty.call(change.value, 'opacity')) {
+                        style.opacity = widget.originalStyle.opacity != null ? widget.originalStyle.opacity : 1
+                    }
+                    style._aid = `resume-change-${nextID++}`
+                    style._org = false
+                    resumedStyles[change.id] = style
+                    assign(widget.styles, start, Infinity, () => style)
+                    widget.lastStyle = style
+                })
+                const wasResumedIDs = new Set(Object.keys(resumedStyles))
                 for (const schedule of list) {
                     if (!model.widgets[schedule.id]) continue
+                    const wasResumed = wasResumedIDs.has(schedule.id)
+                    delete resumedStyles[schedule.id]
                     const widget = init(schedule.id)
                     const id = nextID++
                     const end = start + schedule.delay + schedule.duration
@@ -133,6 +154,55 @@ export default class ReplayAnimationIndex {
                     }
                     assign(widget.styles, start, Infinity, frame)
                     widget.lastStyle = frame(Math.max(start, slot(duration - 1)))
+                    if (wasResumed) {
+                        // Widget changes contain both animation display writes and
+                        // explicit writes, in script order. A conflicting write
+                        // after the animation owns the restored frame.
+                        const relevant = changes.filter(change => change && change.id === schedule.id && change.key === 'style' && change.value)
+                        const display = schedule.animation === 'fadeOut' ? 'none' : 'block'
+                        let marker = -1
+                        relevant.forEach((change, index) => {
+                            if (Object.keys(change.value).length === 1 && change.value.display === display) marker = index
+                        })
+                        const later = marker < 0 ? [] : relevant.slice(marker + 1)
+                        if (later.some(change => Object.prototype.hasOwnProperty.call(change.value, 'display') ||
+                            Object.prototype.hasOwnProperty.call(change.value, 'opacity'))) {
+                            const style = Object.assign({}, widget.lastStyle)
+                            later.forEach(change => {
+                                Object.assign(style, change.value)
+                                if (Object.prototype.hasOwnProperty.call(change.value, 'display') &&
+                                    !Object.prototype.hasOwnProperty.call(change.value, 'opacity')) {
+                                    style.opacity = widget.originalStyle.opacity != null ? widget.originalStyle.opacity : 1
+                                }
+                            })
+                            style._aid = `resume-change-${nextID++}`
+                            style._org = false
+                            resumedStyles[schedule.id] = style
+                            assign(widget.styles, start, Infinity, () => style)
+                            widget.lastStyle = style
+                        }
+                    }
+                }
+            }
+            if (event.type === 'SessionResume' && event.state && event.state.type === 'resume' && event.state.value) {
+                const snapshot = event.state.value
+                const changes = snapshot.scriptChanges || []
+                for (const effect of snapshot.animationEffects || []) {
+                    if (!effect || !model.widgets[effect.id]) continue
+                    const widget = init(effect.id)
+                    const style = Object.assign({}, widget.originalStyle)
+                    changes.forEach(change => {
+                        if (change.id === effect.id && change.key === 'style') Object.assign(style, change.value)
+                    })
+                    // Replacing an earlier fade must also clear its transient
+                    // opacity when the later script only changed display.
+                    style.opacity = effect.opacity != null ? effect.opacity :
+                        style.opacity != null ? style.opacity : 1
+                    style._aid = `resume-${nextID++}`
+                    style._org = false
+                    assign(widget.styles, start, Infinity, () => style)
+                    resumedStyles[effect.id] = style
+                    widget.lastStyle = style
                 }
             }
         }

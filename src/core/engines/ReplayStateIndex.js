@@ -5,6 +5,11 @@ import { applyScriptEffect, isValueState, setSiblingStates } from './ScriptState
 const MAX_CHECKPOINTS = 64
 const BUILD_BATCH_SIZE = 1000
 
+/** Keep the visual frame fixed while elapsed replay time crosses a reload. */
+export function replayFrameTime (event, time, min) {
+    return event && event.type === 'SessionReload' ? event.time - min : time
+}
+
 function initialState (defaultStates) {
     const states = lang.clone(defaultStates) || {}
     return {
@@ -26,7 +31,25 @@ function applyEvent (state, event, previous) {
         state.touched = {}
     }
 
-    if (event.state && event.state.type === 'script') {
+    if (event.state && event.state.type === 'resume') {
+        const snapshot = event.state.value || {}
+        if (!state.states[screen]) state.states[screen] = {}
+        if (!state.values[screen]) state.values[screen] = {}
+        ;(snapshot.widgets || []).forEach(widget => {
+            if (!widget || !widget.id || !widget.state) return
+            const widgetState = lang.clone(widget.state)
+            state.states[screen][widget.id] = widgetState
+            if (isValueState(widgetState)) {
+                state.values[screen][widget.id] = widgetState
+                state.touched[widget.id] = true
+            }
+        })
+        state.overlays = (snapshot.overlays || []).slice()
+        state.scroll = { type: 'scroll', value: snapshot.scroll || 0 }
+        if (event.type === 'SessionResume' && Array.isArray(snapshot.scriptChanges)) {
+            applyScriptEffect(state.effects, state.data, { widgetChanges: lang.clone(snapshot.scriptChanges) })
+        }
+    } else if (event.state && event.state.type === 'script') {
         // Nested data paths are mutated in place. Do not let a later change
         // alter an object still owned by the original recorded event.
         applyScriptEffect(state.effects, state.data, lang.clone(event.state.value))
@@ -58,7 +81,7 @@ function applyEvent (state, event, previous) {
         if (previous && event.type !== 'ScreenAnimation' && previous.type !== 'ScreenAnimation' && event.scrollTop != null) {
             state.scroll.value = event.scrollTop
         }
-    } else if (previous && previous.type === 'ScreenScroll' && previous.state) {
+    } else if (!(event.state && event.state.type === 'resume') && previous && previous.type === 'ScreenScroll' && previous.state) {
         // The old projection retains the final value, not the scroll samples.
         state.scroll = { type: 'scroll', value: previous.state.value }
     }

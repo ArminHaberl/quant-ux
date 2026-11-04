@@ -38,6 +38,8 @@
   import TooltipMixin from 'core/simulator/TooltipMixin'
   import Preloader from 'core/simulator/Preloader'
   import { beginNavigation, interceptBeforeLoad, isNavigationActive, recordNavigationLine } from 'core/simulator/BeforeLoad'
+  import SessionResume from 'core/simulator/SessionResume'
+  import { claimReload, readCheckpoint } from 'core/simulator/SessionCheckpoint'
   import Splash from '../views/simulator/Splash.vue'
 
   
@@ -50,7 +52,7 @@
 	  props: ['mode', 'app', 'hasPreload'],
 	  mixins:[
 		  Layout, Gestures, RestMixin, LogMixin, RenderMixin, EventMixin,ScriptMixin, TooltipMixin,
-		  ScrollMixin, AnimationMixin, MouseMixin, DataBindingMixin, TemplateMixin, AudioMixin, DojoWidget
+		  ScrollMixin, AnimationMixin, MouseMixin, DataBindingMixin, TemplateMixin, AudioMixin, SessionResume, DojoWidget
 	  ],
 	  data: function () {
 		  return {
@@ -119,6 +121,10 @@
 			  }
   
 			  if(this.mode == "standalone"){
+				  if (params.h && params.live !== 'true' && !this.embedded) {
+					  this._resumeEnabled = true
+					  try { this._resumeCandidate = readCheckpoint(window.sessionStorage, claimReload(window)) } catch (e) { this._resumeCandidate = null }
+				  }
 				  // FIXME: On reloads this may cause issues because we get several screens
 				  this.baseURI = uri
 			
@@ -277,6 +283,7 @@
 		  },
   
 		  async loadSettings (model) {
+			  if (model) this.prepareSessionResume(model, this.hash)
 			  if (this.hash && this.qr) {
 				  const settings = await Services.getModelService().findTestByHash(model, this.hash)
 				  this.settings = settings;
@@ -287,6 +294,7 @@
 		  },
   
 		  applyTestSettings (settings) {
+			  if (this._resumeSnapshot) return
 			  if (settings.recordOneTestPerUser === true) {
 				  const key = 'quxSession' + settings.appID
 				  const userHasTested = localStorage.getItem(key)
@@ -306,11 +314,15 @@
 			  } else {
 				  this.logger.log(1,"setModel","enter >" + model.id + " > splash : "+ this._splashTime);
 				  this.model = model;
+				  if (!this._resumeSnapshot) this.prepareSessionResume(model, this.hash)
 				  this.initRootTemplateLines(model)
 				  if(this.hash){
 					  this.preloadImages();
 				  }
-				  if(this._splashTime > 0 && this.skipSplash !== true){
+				  if (this._resumeSnapshot) {
+					  this.hasSplash = false
+					  this.startSimilator(model)
+				  } else if(this._splashTime > 0 && this.skipSplash !== true){
   
 					  this.logger.log(-1,"setModel","show splash");
 					  /**
@@ -396,10 +408,14 @@
 			  this.initLiveUpdate();
 			  this.initScroll();
 			  // this can cause issues when the script want to fix
-			  await this.initLoadScripts() 
-			  await this.initRepeatScripts() 
-			  await this.initDefaultDataBinding(model)
-			  await this.initLoadRest()
+			  if (!this._resumeSnapshot) {
+				  await this.initLoadScripts()
+			  }
+			  await this.initRepeatScripts()
+			  if (!this._resumeSnapshot) {
+				  await this.initDefaultDataBinding(model)
+				  await this.initLoadRest()
+			  }
 			  await this.initRepeatRest()
 	  
   
@@ -414,8 +430,10 @@
 			  this.renderFactory.setModel(this.model);
   
 			  this.renderFactory.setScaleFactor(this._scaleX, this._scaleY);
+			  this.initSessionCapture()
   
-			  this.render();
+			  if (this._resumeSnapshot) css.remove(this.domNode, "MatcSimulatorSplash MactMainGradient")
+			  if (!this.restoreSessionScreen()) this.render();
   
 			  if((!has("android") && !has("ios"))){
 				  this.logger.log(0,"postCreate","Desktop detected -> log mouse!");

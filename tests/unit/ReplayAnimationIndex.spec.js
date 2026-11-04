@@ -59,3 +59,125 @@ test('overlapping animations restore the earlier style and position after seekin
     expect(index.get(990).w.pos._org).toBe(true)
     expect(index.get(750).w.pos.x).toBe(50)
 })
+
+/** A reload while a script fade was delayed used to show its starting frame again. */
+test('resume snaps a delayed script animation to its final frame while preserving the reload gap', async () => {
+    const events = [
+        { id: 'fade', type: 'ScriptEffect', time: 0, state: { type: 'script', value: { animations: [
+            { type: 'WidgetAnimation', id: 'w', animation: 'fadeIn', delay: 6000, duration: 300 }
+        ] } } },
+        { type: 'SessionReload', time: 300, state: { type: 'resume', value: {} } },
+        { type: 'SessionResume', time: 3000, state: { type: 'resume', value: {
+            animationEffects: [{ id: 'w', opacity: 1, finishText: false }],
+            scriptChanges: [{ id: 'w', key: 'style', value: { display: 'block' } }]
+        } } }
+    ]
+    const index = new ReplayAnimationIndex(events, model, 0, 10000, factory, (s, p) => p)
+    await index.build()
+    expect(index.get(300).w.style.opacity).toBe(0)
+    expect(index.get(3000).w.style.opacity).toBe(1)
+    expect(index.get(3000).w.style.display).toBe('block')
+    expect(index.get(9000).w.style.opacity).toBe(1)
+    expect(index.get(300).w.style.opacity).toBe(0)
+})
+
+/** A show after a fade must remain visible when the same session is restored. */
+test('resume honours a later script style rather than the old animation', async () => {
+    const events = [
+        { type: 'ScriptEffect', time: 0, state: { type: 'script', value: { animations: [
+            { type: 'WidgetAnimation', id: 'w', animation: 'fadeOut', duration: 300 }
+        ] } } },
+        { type: 'SessionResume', time: 3000, state: { type: 'resume', value: {
+            animationEffects: [{ id: 'w', opacity: null, finishText: false }],
+            scriptChanges: [{ id: 'w', key: 'style', value: { display: 'block', opacity: 0.6 } }]
+        } } }
+    ]
+    const index = new ReplayAnimationIndex(events, model, 0, 5000, factory, (s, p) => p)
+    await index.build()
+    expect(index.get(600).w.style.opacity).toBe(0)
+    expect(index.get(3000).w.style.opacity).toBe(0.6)
+    expect(index.get(3000).w.style.display).toBe('block')
+    expect(index.get(600).w.style.opacity).toBe(0)
+})
+
+/** A later show without an explicit opacity must clear a previous fade-out. */
+test('resume clears the old opacity when a script only writes display', async () => {
+    const noOpacity = { widgets: { w: { style: {} } }, groups: {} }
+    const events = [
+        { type: 'ScriptEffect', time: 0, state: { type: 'script', value: { animations: [
+            { type: 'WidgetAnimation', id: 'w', animation: 'fadeOut', duration: 300 }
+        ] } } },
+        { type: 'SessionResume', time: 3000, state: { type: 'resume', value: {
+            animationEffects: [{ id: 'w', opacity: null, finishText: false }],
+            scriptChanges: [{ id: 'w', key: 'style', value: { display: 'block' } }]
+        } } }
+    ]
+    const index = new ReplayAnimationIndex(events, noOpacity, 0, 5000, factory, (s, p) => p)
+    await index.build()
+    expect(index.get(600).w.style.opacity).toBe(0)
+    expect(index.get(3000).w.style).toMatchObject({ display: 'block', opacity: 1 })
+})
+
+/** A script show after resuming must win even when the player is scrubbed directly to it. */
+test('later script changes supersede restored animation styles and survive a screen load', async () => {
+    const events = [
+        { type: 'SessionResume', time: 300, state: { type: 'resume', value: {
+            animationEffects: [{ id: 'w', opacity: 0, finishText: false }],
+            scriptChanges: [{ id: 'w', key: 'style', value: { display: 'none' } }]
+        } } },
+        { type: 'ScriptEffect', time: 600, state: { type: 'script', value: { widgetChanges: [
+            { id: 'w', key: 'style', value: { display: 'block', color: 'red' } }
+        ] } } },
+        { type: 'ScreenLoaded', time: 900 }
+    ]
+    const index = new ReplayAnimationIndex(events, model, 0, 2000, factory, (s, p) => p)
+    await index.build()
+    expect(index.get(300).w.style).toMatchObject({ display: 'none', opacity: 0 })
+    expect(index.get(600).w.style).toMatchObject({ display: 'block', opacity: 1, color: 'red' })
+    expect(index.get(900).w.style).toMatchObject({ display: 'block', opacity: 1, color: 'red' })
+    expect(index.get(300).w.style).toMatchObject({ display: 'none', opacity: 0 })
+})
+
+/** A show following an animation in the same script must win after a resume. */
+test('a later same-script visibility write wins over a new animation after reload', async () => {
+    const events = [
+        { type: 'SessionResume', time: 300, state: { type: 'resume', value: {
+            animationEffects: [{ id: 'w', opacity: 1, finishText: false }], scriptChanges: []
+        } } },
+        { type: 'ScriptEffect', time: 600, state: { type: 'script', value: {
+            widgetChanges: [
+                { id: 'w', key: 'style', value: { display: 'none' } },
+                { id: 'w', key: 'style', value: { display: 'block' } }
+            ],
+            animations: [{ type: 'WidgetAnimation', id: 'w', animation: 'fadeOut', duration: 300 }]
+        } } }
+    ]
+    const index = new ReplayAnimationIndex(events, model, 0, 2000, factory, (s, p) => p)
+    await index.build()
+    expect(index.get(600).w.style).toMatchObject({ display: 'block', opacity: 1 })
+    expect(index.get(1200).w.style).toMatchObject({ display: 'block', opacity: 1 })
+})
+
+/** Multiple animations in one script must not lose a later hide after a reload. */
+test('later writes after multiple same-script animations remain authoritative', async () => {
+    const events = [
+        { type: 'SessionResume', time: 300, state: { type: 'resume', value: {
+            animationEffects: [{ id: 'w', opacity: 1, finishText: false }], scriptChanges: []
+        } } },
+        { type: 'ScriptEffect', time: 600, state: { type: 'script', value: {
+            widgetChanges: [
+                { id: 'w', key: 'style', value: { display: 'none' } },
+                { id: 'w', key: 'style', value: { display: 'block' } },
+                { id: 'w', key: 'style', value: { display: 'none' } }
+            ],
+            animations: [
+                { type: 'WidgetAnimation', id: 'w', animation: 'fadeOut', duration: 300 },
+                { type: 'WidgetAnimation', id: 'w', animation: 'fadeIn', duration: 300 }
+            ]
+        } } }
+    ]
+    const index = new ReplayAnimationIndex(events, model, 0, 2000, factory, (s, p) => p)
+    await index.build()
+    expect(index.get(600).w.style.display).toBe('none')
+    expect(index.get(1200).w.style.display).toBe('none')
+})

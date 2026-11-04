@@ -81,7 +81,7 @@
 				  this.logRandomizedWidgetStates(screen);
 
   
-				  if(this.qr){
+				  if(this.qr && !this._restoringSession){
 					  hash(`#/simulate.html?qr=${this.qr}&h=${this.hash}&s=${screen.id}&log=${this.logData}&live=${this.live}&ln=${this.getLanguage()}`);
 				  } else {
 					//hash(`#/test.html?h=${this.hash}&s=${screen.id}&log=${this.logData}&live=${this.live}&ln=${this.getLanguage()}`);
@@ -240,6 +240,7 @@
 			  * Call live cycle methods
 			  */
 			  this.afterScreenCreated(screen, div);
+			  this.applyResumedAnimationEffects()
   
   
 			  return div;
@@ -286,9 +287,11 @@
 				  delete this._androidBlurTimeout;
 			  }
 			  delete this._transitionTimer;
+			  delete this._resumeScreenTimer;
 		  },
   
 		  afterScreenCreated (screen){
+			  if (this._restoringSession) return
   
   
 			  /**
@@ -302,7 +305,7 @@
 						  this.logger.log(0,"afterScreenCreated","Found timer");
 						  var delay = Math.round(line.timer * 1000);
 						  if(!isNaN(delay) && delay >= 0){
-							  this._transitionTimer = setTimeout(lang.hitch(this, "executeLine", screen.id, null, line),delay);
+							  this.scheduleScreenTimer(screen, line, delay);
 						  } else {
 							  this.logger.error("afterScreenCreated","Delay has shitty format "+ line.timer);
 						  }
@@ -319,6 +322,15 @@
 			  } else {
 				  console.debug("afterScreenCreated() > do not run timers!");
 			  }
+		  },
+
+		  scheduleScreenTimer (screen, line, delay) {
+			  delay = Math.max(0, Number(delay) || 0)
+			  this._resumeScreenTimer = { screenID: screen.id, dueAt: Date.now() + delay }
+			  this._transitionTimer = setTimeout(() => {
+				  delete this._resumeScreenTimer
+				  this.executeLine(screen.id, null, line)
+			  }, delay)
 		  },
   
 		  /**********************************************************
@@ -688,6 +700,7 @@
 			  }
 			    
 			  this.setScreenBackground(screen);
+			  this.scheduleSessionCheckpoint()
 		  },
   
 		  removeScreen (div){
@@ -702,6 +715,7 @@
 		  },
   
 		  checkEndScreen (screen){
+			  if (this._restoringSession) return
 			  if (this.qr === true) {
 				  if (screen && screen.name && screen.name.indexOf("(END)") > 0){
 					  this.logger.log(-1, "checkEndScreen","END SCREEN > "+ screen.name);
@@ -753,6 +767,7 @@
   
   
 			  this.runOnLoadedScreenAnimation(overlay.id, line);
+			  this.scheduleSessionCheckpoint()
 		  },
   
 		  popOverlay (){
@@ -877,6 +892,7 @@
 					  delete this.fixedOverlayWrapper;
 				  }
 			  }
+			  this.scheduleSessionCheckpoint()
 		  },
   
 		  destroyUiWidgets (){

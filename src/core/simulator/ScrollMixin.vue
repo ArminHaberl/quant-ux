@@ -82,6 +82,11 @@ export default {
 		},
 
 		onScroll (scrollTop){
+			if (this._ignoreResumeScroll) {
+				this.currentScrollTop = scrollTop
+				this.currentScrollTopRelative = this.currentScreen ? scrollTop / this.currentScreen.h : 0
+				return
+			}
 
 			const p = (scrollTop / this.currentScreen.h);
 			const now = new Date().getTime();
@@ -116,6 +121,7 @@ export default {
 			}
 
 			this.gestureLastScroll = now;
+			this.scheduleSessionCheckpoint()
 			topic.publish("MatcSimulatorScrollEvent", p, scrollTop);
 
 			this.fireScrollEvents(scrollTop)
@@ -129,6 +135,7 @@ export default {
 		 * This works currentlz onlz for down scrolls
 		 */
 		fireScrollEvents (scrollTop) {
+			if (this._restoringSession) return
 			if (this._scrollWidgets && this.currentScreen) {
 				let offset = this.currentScreen.y + this.screenPos.h
 				for (let i=0; i < this._scrollWidgets.length; i++) {

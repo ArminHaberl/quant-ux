@@ -9,6 +9,7 @@ import * as ScriptAnimations from '../../core/engines/ScriptAnimations'
 import Animation from '../../core/Animation'
 import lang from 'dojo/_base/lang'
 import { isNavigationActive } from 'core/simulator/BeforeLoad'
+import { recordAnimationDelta, releaseAnimationEffects } from 'core/simulator/SessionAnimationState'
 
 export default {
   name: 'ScriptMixin',
@@ -261,12 +262,21 @@ export default {
              */
             const animationFactory = new Animation();
             result.appDeltas.forEach(change => {
+                if (this._resumeEnabled) {
+                    if (!this._resumeScriptChanges) this._resumeScriptChanges = []
+                    if (!this._resumeAnimationEffects) this._resumeAnimationEffects = []
+                    releaseAnimationEffects(this.renderFactory, this.model, this._resumedAnimationEffects, change)
+                    recordAnimationDelta(this.model, this._resumeScriptChanges, this._resumeAnimationEffects, change)
+                }
                 if (ScriptAnimations.isScriptAnimation(change)) {
                     ScriptAnimations.applyScriptAnimation(this.model, this.renderFactory, animationFactory, change);
                 } else {
                     ScriptToModel.applyChange(this.model, change, this.renderFactory)
                 }
             });
+			if (this._resumeEnabled) {
+				this.scheduleSessionCheckpoint()
+			}
         }
     },
     

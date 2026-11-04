@@ -114,6 +114,10 @@ export default {
       if (!node) {
         return
       }
+      if (this._restoringResumeScroll) {
+        this._segmentScrollNode = node
+        return
+      }
       const now = new Date().getTime()
       /**
        * Throttle samples, then debounce the emit, so one gesture becomes one
@@ -158,6 +162,31 @@ export default {
         type: "scroll",
         value: 0
       }
+    },
+
+    getResumeState() {
+      const node = this._segmentScrollNode || (this.domNode &&
+        (this.domNode.querySelector('.simplebar-content-wrapper') || this.domNode))
+      const value = this._resumeScrollValue != null ? this._resumeScrollValue : this.getSegmentScroll(node)
+      return { type: 'scroll', value, children: [{ time: 0, value }] }
+    },
+
+    setResumeState(state) {
+      if (!state || state.type !== 'scroll') return
+      const value = Math.max(0, Math.min(1, Number(state.value) || 0))
+      this._resumeScrollValue = value
+      this._restoringResumeScroll = true
+      requestAnimationFrame(() => {
+        if (this.domNode) {
+          const node = this.domNode.querySelector('.simplebar-content-wrapper') || this.domNode
+          node.scrollTop = value * Math.max(0, node.scrollHeight - node.clientHeight)
+          this._segmentScrollNode = node
+        }
+        requestAnimationFrame(() => {
+          delete this._resumeScrollValue
+          delete this._restoringResumeScroll
+        })
+      })
     },
 
     /**

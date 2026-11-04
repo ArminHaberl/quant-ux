@@ -59,6 +59,7 @@ import has from 'dojo/has'
 import Services from 'services/Services'
 import Simulator from 'core/Simulator'
 import Preloader from 'core/simulator/Preloader'
+import { claimReload, readCheckpoint, matchesCheckpoint } from 'core/simulator/SessionCheckpoint'
 import QR from 'core/QR'
 import Analytics from 'dash/Analytics'
 import DataFrame from 'common/DataFrame'
@@ -121,6 +122,7 @@ export default {
     methods: {
       	postCreate () {
 			this.logger = new Logger('TestPage');
+			try { this._resumeCandidate = readCheckpoint(window.sessionStorage, claimReload(window)) } catch (e) { this._resumeCandidate = null }
 			const hash = this.getHashFromUri();
 			this.logger.log(2,"postCreate","enter", hash);
 			const log = this.$route.query.log
@@ -248,13 +250,18 @@ export default {
 
 		getHashFromUri (){
 			if (this.$route.query.a && this.$route.query.b) {
+				if (this._resumeCandidate && [this.$route.query.a, this.$route.query.b].includes(this._resumeCandidate.hash)) {
+					return this._resumeCandidate.hash
+				}
+				if (this._selectedTestHash) return this._selectedTestHash
 				if(Math.random() > 0.5){
 					this.logger.log(0,"getHashFromUri","Test version A");
-					return this.$route.query.a;
+					this._selectedTestHash = this.$route.query.a
 				} else {
 					this.logger.log(0,"getHashFromUri","Test version B");
-					return this.$route.query.b;
+					this._selectedTestHash = this.$route.query.b
 				}
+				return this._selectedTestHash
 			}
 			return this.$route.query.h
 		},
@@ -280,6 +287,11 @@ export default {
 		setTestsettings (settings){
 			this.logger.log(1,"setTestsettings","enter > ", settings);
 			this.settings = settings;
+			if (this.$route.query.debug !== 'true' && matchesCheckpoint(this._resumeCandidate, this.model, this.hash)) {
+				this.simulatorEvents = this._resumeCandidate.taskEvents || []
+				if (this.simulatorEvents.length) this.updateTaskProgress()
+				this.$nextTick(() => this.renderTest())
+			}
 		},
 		
 		
@@ -316,7 +328,10 @@ export default {
 
 		onSimulatorEvent (e) {
 			this.simulatorEvents.push(e)
+			this.updateTaskProgress()
+		},
 
+		updateTaskProgress () {
 			let session = new DataFrame(this.simulatorEvents);
 			session = this.getActionEvents(session);
 			const tasks = this.settings.tasks;
@@ -561,6 +576,10 @@ export default {
 				sim.on('event', (e) => this.onSimulatorEvent(e))
 				sim.mode = "debug"
 				sim.logData = this.logging
+				sim._resumeEnabled = true
+				sim._resumeCandidate = this._resumeCandidate
+				sim.prepareSessionResume(this.model, this.hash)
+				sim._resumeTaskEvents = this.simulatorEvents
 				sim.applyTestSettings(this.settings)
 				return sim
 			}
