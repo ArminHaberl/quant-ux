@@ -1,5 +1,5 @@
 import lang from '../../dojo/_base/lang'
-import { applyScriptEffect, isValueState, setSiblingStates } from './ScriptStateReplay'
+import { applyScriptEffect, appendTerminalChild, isValueState, setSiblingStates } from './ScriptStateReplay'
 
 // Keep checkpoint memory bounded even when the recording contains many events.
 const MAX_CHECKPOINTS = 64
@@ -54,7 +54,7 @@ function applyEvent (state, event, previous) {
         // alter an object still owned by the original recorded event.
         applyScriptEffect(state.effects, state.data, lang.clone(event.state.value))
     } else if (event.state && event.type !== 'ScreenScroll' && event.widget && state.states[screen]) {
-        const widgetState = lang.clone(event.state)
+        const widgetState = appendTerminalChild(lang.clone(event.state), event)
         state.states[screen][event.widget] = widgetState
         if (isValueState(widgetState)) {
             state.values[screen][event.widget] = widgetState

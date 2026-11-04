@@ -74,6 +74,37 @@ export function isValueState (state) {
 }
 
 /**
+ * A context menu paste fires the DOM input event but no keyup, so the
+ * sampler that feeds the composite series never saw the pasted value, and
+ * the blur flush put it into the state's `value` alone. The player's
+ * TextBox.setState reads the children series whenever it exists and
+ * therefore replayed the field with the stale pre-paste sample, although
+ * the event, and with it the survey analytics, carried the pasted value.
+ *
+ * Append the final value as a terminal child, timed at the event that
+ * flushed it. A series that already ends with the final value (i.e. what
+ * typing records) is returned unchanged, and so is every state that is not
+ * a text state: for the other composite widgets the final value's relation
+ * to the sampled series is not pinned down by a defect, so their series is
+ * left exactly as recorded.
+ */
+export function appendTerminalChild (widgetState, event) {
+    if (!widgetState || widgetState.type !== 'text' || !Array.isArray(widgetState.children)) {
+        return widgetState
+    }
+    if (event.time == null) {
+        return widgetState
+    }
+    const children = widgetState.children
+    const last = children[children.length - 1]
+    if (last && last.value === widgetState.value) {
+        return widgetState
+    }
+    children.push({ time: event.time, value: widgetState.value })
+    return widgetState
+}
+
+/**
  * Merge one ScriptEffect recording into the cumulative script effects and
  * script data of the replay.
  *
@@ -276,7 +307,13 @@ export function buildEventStates (events, defaultStates) {
                  * FIXME: If we do master-state-propagation, we have to update the state here, or?
                  */
 
-                states[screenID][event.widget] = event.state;
+                /**
+                 * The projected state is a clone, so a paste repair by
+                 * appendTerminalChild cannot leak into the recorded events.
+                 */
+                var widgetState = appendTerminalChild(lang.clone(event.state), event);
+
+                states[screenID][event.widget] = widgetState;
 
                 /**
                  * A state that carries the widget's value is the value state
@@ -284,7 +321,7 @@ export function buildEventStates (events, defaultStates) {
                  * validation) is not, and leaves the retained value in place.
                  */
                 if (isValueState(event.state)) {
-                    valueStates[screenID][event.widget] = event.state;
+                    valueStates[screenID][event.widget] = widgetState;
 
                     /**
                      * Only an interaction that carried the widget's value counts

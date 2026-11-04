@@ -113,3 +113,44 @@ test('resume applies saved script effects only after the reload gap', async () =
     expect(index.get(2).effects.input.style.display).toBe('none')
     expect(index.get(1).effects).toEqual({})
 })
+
+/**
+ * A context menu paste fires the DOM input event but no keyup, so nothing
+ * sampled the pasted value into the recorded composite series: the replay
+ * read the stale focus-time sample and showed the field blank, although
+ * the survey analytics carried the pasted value.
+ */
+test('a paste that missed the children series is replayed through a terminal child', async () => {
+    const defaults = { s: { input: { type: 'text', value: '' } } }
+    const events = [
+        { type: 'ScreenLoaded', screen: 's', time: 10 },
+        { type: 'WidgetChange', screen: 's', widget: 'input', time: 200, state: {
+            type: 'text', value: 'pasted', children: [{ time: 100, value: '' }] } }
+    ]
+    const index = new ReplayStateIndex(copy(events), copy(defaults))
+    await index.build()
+    expect(index.get(1).widgetStates.input.children).toEqual([
+        { time: 100, value: '' },
+        { time: 200, value: 'pasted' }
+    ])
+    expect(index.get(1).valueStates.input).toEqual(index.get(1).widgetStates.input)
+
+    /**
+     * A series that already ends with the final value (what typing records)
+     * must not gain a duplicate, and both projections stay in lockstep.
+     */
+    const typedEvents = [
+        { id: '0', type: 'ScreenLoaded', screen: 's', time: 10 },
+        { id: '1', type: 'WidgetChange', screen: 's', widget: 'input', time: 200, state: {
+            type: 'text', value: 'abc', children: [{ time: 100, value: 'a' }, { time: 150, value: 'abc' }] } }
+    ]
+    const expected = buildEventStates(copy(typedEvents), copy(defaults))
+    const typedIndex = new ReplayStateIndex(copy(typedEvents), copy(defaults))
+    await typedIndex.build()
+    expect(typedIndex.get(1).widgetStates.input.children).toEqual([
+        { time: 100, value: 'a' },
+        { time: 150, value: 'abc' }
+    ])
+    expect(typedIndex.get(1).widgetStates.input.children)
+        .toEqual(expected.widgetStates['1'].input.children)
+})

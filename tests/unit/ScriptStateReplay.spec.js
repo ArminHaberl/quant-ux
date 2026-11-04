@@ -1,4 +1,5 @@
 import {
+    appendTerminalChild,
     buildEventStates,
     isLifecycleState,
     isValueState
@@ -301,5 +302,69 @@ describe('ScriptStateReplay.buildEventStates', () => {
         expect(result.overlayStates['e4']).toEqual([])
         expect(result.scrollStates['e3']).toEqual({ type: 'scroll', value: 0.5 })
         expect(result.scrollStates['e4']).toEqual({ type: 'scroll', value: 0.5 })
+    })
+
+    /**
+     * A context menu paste fires the DOM input event but no keyup, so
+     * nothing sampled the pasted value into the composite series and the
+     * blur flush put it into the state's `value` alone. The replay read the
+     * stale focus-time sample and showed the field blank, although the
+     * survey analytics carried the pasted value. The repair has to be in
+     * both tables, and the recorded event itself must stay untouched.
+     */
+    test('a paste without a keyup is repaired in both tables without touching the event', () => {
+        const events = [
+            { id: 'e1', type: 'ScreenLoaded', screen: 's1' },
+            { id: 'e2', type: 'WidgetChange', screen: 's1', widget: 'input', time: 200, state: { type: 'text', value: 'pasted', children: [{ time: 100, value: '' }] } }
+        ]
+        const result = buildEventStates(events, defaultStates())
+
+        expect(result.widgetStates['e2']['input'].children).toEqual([
+            { time: 100, value: '' },
+            { time: 200, value: 'pasted' }
+        ])
+        expect(result.valueStates['e2']['input']).toBe(result.widgetStates['e2']['input'])
+        expect(events[1].state.children).toEqual([{ time: 100, value: '' }])
+    })
+})
+
+describe('ScriptStateReplay.appendTerminalChild', () => {
+
+    test('a paste without a keyup gains a terminal child carrying the pasted value', () => {
+        const state = { type: 'text', value: 'pasted', children: [{ time: 100, value: '' }] }
+        appendTerminalChild(state, { time: 200 })
+
+        expect(state.children).toEqual([
+            { time: 100, value: '' },
+            { time: 200, value: 'pasted' }
+        ])
+    })
+
+    test('a series that already ends with the final value stays untouched', () => {
+        const state = { type: 'text', value: 'abc', children: [{ time: 100, value: 'a' }, { time: 150, value: 'abc' }] }
+        appendTerminalChild(state, { time: 200 })
+
+        expect(state.children).toEqual([{ time: 100, value: 'a' }, { time: 150, value: 'abc' }])
+    })
+
+    test('only text states are repaired', () => {
+        const state = { type: 'select', value: 'A', children: [{ time: 100, value: '' }] }
+        appendTerminalChild(state, { time: 200 })
+
+        expect(state.children).toEqual([{ time: 100, value: '' }])
+    })
+
+    test('a recording without an event time stays untouched', () => {
+        const state = { type: 'text', value: 'pasted', children: [{ time: 100, value: '' }] }
+        appendTerminalChild(state, { state })
+
+        expect(state.children).toEqual([{ time: 100, value: '' }])
+    })
+
+    test('an empty series gains the value as its only sample', () => {
+        const state = { type: 'text', value: 'pasted', children: [] }
+        appendTerminalChild(state, { time: 200 })
+
+        expect(state.children).toEqual([{ time: 200, value: 'pasted' }])
     })
 })
