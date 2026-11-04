@@ -5,9 +5,10 @@ import JSONPath from '../JSONPath'
  * The pure half of the VideoPlayer's widget state projection: given the
  * recorded events of a session, this module computes, per event, the state of
  * every widget, the script visual effects, the script data bindings, the
- * widgets the user actually touched, the open overlays and the scroll
- * position. The player then walks this lookup table while playing and
- * scrubbing, and applies it to its Preview.
+ * widgets the user actually touched, the widgets the user gave a value on
+ * each screen (never reset, unlike the touched set), the open overlays and
+ * the scroll position. The player then walks this lookup table while playing
+ * and scrubbing, and applies it to its Preview.
  *
  * Plain JS on purpose. VideoPlayer.vue is a .vue file, which this jest config
  * cannot import, so anything worth testing has to sit on this side of the
@@ -202,6 +203,7 @@ export function buildEventStates (events, defaultStates) {
     var scriptEffectsByEvent = {}
     var scriptDataByEvent = {}
     var touchedWidgetsByEvent = {}
+    var userValuesByEvent = {}
     var overlayStatesByEvent = {}
     var screenScoll = {}
 
@@ -216,6 +218,14 @@ export function buildEventStates (events, defaultStates) {
      */
     var lastTouchedWidgets = {}
     var touchedWidgets = {}
+
+    /**
+     * The same value write per screen, but never reset by a screen load,
+     * because the user's last write has to outrank the script data binding
+     * replay after a return to the screen as well. The touched markers above
+     * protect the value only until the state doubles back.
+     */
+    var lastUserValues = {}
 
     var overLays = [];
 
@@ -294,6 +304,13 @@ export function buildEventStates (events, defaultStates) {
             : Object.assign({}, lastTouchedWidgets)
 
         /**
+         * The user value marks are never reset: return to the screen at a
+         * later event, and the value the user gave on the first visit still
+         * outranks the script data of that screen.
+         */
+        var userValues = Object.assign({}, lastUserValues)
+
+        /**
          * 2) if there is a new state, we update it
          * for the new state for the widget that emited it
          */
@@ -332,6 +349,18 @@ export function buildEventStates (events, defaultStates) {
                      */
                     if (event.type != "WidgetInit") {
                         touchedWidgets[event.widget] = true
+
+                        /**
+                         * The screen scoping keeps the mark local, and the
+                         * clone below keeps the write from leaking into the
+                         * table of the previous event, whose screen object
+                         * this is a shallow copy of.
+                         */
+                        var sourceUserValues = userValues[screenID]
+                        userValues[screenID] = sourceUserValues
+                            ? Object.assign({}, sourceUserValues)
+                            : {}
+                        userValues[screenID][event.widget] = true
                     }
                 }
 
@@ -357,6 +386,9 @@ export function buildEventStates (events, defaultStates) {
 
         lastTouchedWidgets = touchedWidgets
         touchedWidgetsByEvent[event.id] = touchedWidgets
+
+        lastUserValues = userValues
+        userValuesByEvent[event.id] = userValues
 
         /**
          * 3) Here we build for each event the scrollPosition.
@@ -439,6 +471,7 @@ export function buildEventStates (events, defaultStates) {
         scriptEffects: scriptEffectsByEvent,
         scriptData: scriptDataByEvent,
         touchedWidgets: touchedWidgetsByEvent,
+        userValues: userValuesByEvent,
         overlayStates: overlayStatesByEvent,
         scrollStates: screenScoll,
         backfilled: backfilled

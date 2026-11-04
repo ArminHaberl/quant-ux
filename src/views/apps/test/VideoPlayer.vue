@@ -832,8 +832,11 @@ export default {
 				/**
 				 * Apply script data bindings after the ordinary widget states,
 				 * so recorded data values win over static label defaults.
+				 * The per screen user value marks keep a script from re-using
+				 * the older value it wrote over a field the recorded user had
+				 * filled during an earlier visit to the screen.
 				 */
-				this.preview.setScriptDataBindingState(replayState.data, replayState.touched)
+				this.preview.setScriptDataBindingState(replayState.data, replayState.touched, replayState.userValues[event.screen])
 
 				/**
 				 * Set scroll

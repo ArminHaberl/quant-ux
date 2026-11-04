@@ -631,20 +631,23 @@ export default {
       })
     },
 
-    setScriptDataBindingState: function(data, touched) {
+    setScriptDataBindingState: function(data, touched, userValues) {
       if (!this.model || !this.renderFactory) {
         return
       }
 
       const values = data || {}
       const touchedSet = touched || {}
+      const userValuesSet = userValues || {}
       const widgets = this.renderFactory.getAllUIWidgets()
       for (const id in widgets) {
-        if (touchedSet[id]) {
+        if (touchedSet[id] || userValuesSet[id]) {
           /**
            * The widget has recorded user interactions. The ordinary widget
            * state replay is authoritative for it, so we must not overwrite
-           * the interaction value with (older) script data.
+           * the interaction value with (older) script data. The userValues
+           * set keeps that protection across screen loads, which reset the
+           * per event touched set.
            */
           continue
         }

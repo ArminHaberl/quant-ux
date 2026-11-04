@@ -162,6 +162,40 @@ describe('ScriptStateReplay.buildEventStates', () => {
         expect(result.touchedWidgets['e2']['input']).toBe(true)
     })
 
+    /**
+     * The script data channel only ever sees the values the scripts wrote,
+     * so the touched markers were the only thing protecting a user value
+     * from being overwritten by the recorded script data in the player.
+     * They are reset by every ScreenLoaded, so after the user navigated
+     * away and back, the stale script value replaced the typing at every
+     * frame, although the live prototype kept the typed value. The
+     * userValues table records the same write per screen and never resets,
+     * which is what the player uses to keep the script data replay off
+     * widgets the user filled during an earlier visit to that screen.
+     */
+    test('a user value is marked per screen and survives later screen loads', () => {
+        const events = [
+            { id: 'e0', type: 'ScreenLoaded', screen: 's1' },
+            { id: 'e1', type: 'WidgetChange', screen: 's1', widget: 'input', state: { type: 'text', value: 'typed' } },
+            { id: 'e2', type: 'ScreenLoaded', screen: 's2' },
+            { id: 'e3', type: 'WidgetInit', screen: 's2', widget: 'input', state: { type: 'text', value: 'from a rule' } },
+            { id: 'e4', type: 'ScreenLoaded', screen: 's1' }
+        ]
+        const result = buildEventStates(events, defaultStates())
+
+        /**
+         * The typed value is marked on its screen, and the mark stays while
+         * the session is on other screens and after the state doubles back.
+         * It is scoped per screen: the WidgetInit echo on s2 does not mark
+         * s2, and a script may still fill untouched widgets there.
+         */
+        expect(result.userValues['e1'].s1.input).toBe(true)
+        expect(result.userValues['e2'].s1.input).toBe(true)
+        expect(result.userValues['e2'].s2).toBeUndefined()
+        expect(result.userValues['e3'].s2).toBeUndefined()
+        expect(result.userValues['e4'].s1.input).toBe(true)
+    })
+
     test('a script value that arrives after a user interaction is carried by the WidgetInit echo', () => {
         const events = [
             { id: 'e1', type: 'ScreenLoaded', screen: 's1' },

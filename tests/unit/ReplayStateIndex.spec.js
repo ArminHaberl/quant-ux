@@ -36,6 +36,7 @@ test('bounded checkpoints reproduce the original projection during forward and b
         expect(actual.effects).toEqual(expected.scriptEffects[id])
         expect(actual.data).toEqual(expected.scriptData[id])
         expect(actual.touched).toEqual(expected.touchedWidgets[id])
+        expect(actual.userValues).toEqual(expected.userValues[id])
         expect(actual.overlays).toEqual(expected.overlayStates[id])
         expect(actual.scroll).toEqual(expected.scrollStates[id])
     }
@@ -153,4 +154,55 @@ test('a paste that missed the children series is replayed through a terminal chi
     ])
     expect(typedIndex.get(1).widgetStates.input.children)
         .toEqual(expected.widgetStates['1'].input.children)
+})
+
+/**
+ * A script that fills the form (rules, state rules) writes its values into
+ * the replay's script data for the whole session, but nothing updates that
+ * data channel when the recorded user types over it. The touched markers
+ * that kept the script data replay from overwriting the typing are reset by
+ * every ScreenLoaded, so after the user navigated away and back the player
+ * re-applied the script's old value to the input at every frame, although
+ * the live prototype kept the typed value and the re-render echoes of the
+ * recording all carried it (ReplayStateIndex.js userValues).
+ */
+test('a user value outranks the script data replay across screen hops', async () => {
+    const defaults = {
+        s1: { seed: { type: 'text', value: '' } },
+        s2: { seed: { type: 'text', value: '' } }
+    }
+    const events = [
+        { id: '0', type: 'ScriptEffect', screen: 's1', state: { type: 'script', value: {
+            dataChanges: [{ path: 'Random_Seed', value: 123456 }], widgetChanges: []
+        } } },
+        { id: '1', type: 'ScreenLoaded', screen: 's1' },
+        { id: '2', type: 'WidgetInit', screen: 's1', widget: 'seed', state: { type: 'text', value: '123456' } },
+        { id: '3', type: 'WidgetChange', screen: 's1', widget: 'seed', state: { type: 'text', value: '456' } },
+        { id: '4', type: 'WidgetInit', screen: 's1', widget: 'seed', state: { type: 'text', value: '456' } },
+        { id: '5', type: 'ScreenLoaded', screen: 's2' },
+        { id: '6', type: 'ScreenLoaded', screen: 's1' },
+        { id: '7', type: 'WidgetInit', screen: 's1', widget: 'seed', state: { type: 'text', value: '456' } }
+    ]
+    const expected = buildEventStates(copy(events), copy(defaults))
+    const index = new ReplayStateIndex(copy(events), copy(defaults))
+    await index.build()
+
+    /**
+     * The typing marks the widget for its screen, and the mark is not reset
+     * by the screen loads.
+     */
+    expect(index.get(3).userValues.s1.seed).toBe(true)
+    expect(index.get(6).touched).toEqual({})
+    expect(index.get(6).userValues.s1.seed).toBe(true)
+    expect(index.get(7).userValues.s1.seed).toBe(true)
+
+    /**
+     * The WidgetInit echo of the script prefill is not a user interaction,
+     * and the mark is scoped to the screen that recorded it.
+     */
+    expect(index.get(2).userValues.s1 && index.get(2).userValues.s1.seed).toBeUndefined()
+    expect(index.get(5).userValues.s2).toBeUndefined()
+
+    expect(index.get(3).userValues).toEqual(expected.userValues['3'])
+    expect(index.get(6).userValues).toEqual(expected.userValues['6'])
 })

@@ -15,7 +15,7 @@ function initialState (defaultStates) {
     return {
         states,
         values: lang.clone(states) || {},
-        effects: {}, data: {}, touched: {}, overlays: [],
+        effects: {}, data: {}, touched: {}, userValues: {}, overlays: [],
         scroll: { type: 'scroll', value: 0 }, lastScreen: null
     }
 }
@@ -60,6 +60,17 @@ function applyEvent (state, event, previous) {
             state.values[screen][event.widget] = widgetState
             if (event.type !== 'WidgetInit') {
                 state.touched[event.widget] = true
+                /**
+                 * Unlike touched, which every ScreenLoaded resets, this
+                 * records per screen which widget the user gave a value at
+                 * any point of the session. It is the replay's stand-in for
+                 * the live variable store, where the user's last write
+                 * survives a screen hop; the script data bindings, which are
+                 * only fed by script states, must not re-apply the older
+                 * script value over it.
+                 */
+                if (!state.userValues[screen]) state.userValues[screen] = {}
+                state.userValues[screen][event.widget] = true
             }
         }
         if (widgetState.type === 'radiobox.checked') {
@@ -138,7 +149,8 @@ export default class ReplayStateIndex {
             widgetStates: this.state.states[event.screen] || {},
             valueStates: this.state.values[event.screen] || {},
             effects: this.state.effects, data: this.state.data,
-            touched: this.state.touched, overlays: this.state.overlays,
+            touched: this.state.touched, userValues: this.state.userValues,
+            overlays: this.state.overlays,
             scroll: this.state.scroll
         }
     }
