@@ -107,9 +107,13 @@
 
 
     <section class="">
- 
+
         <div class="box is-shadowless">
           <h3 class="title">Screen Recordings</h3>
+          <div class="MatcCreateSearch MatcFlexColumns" v-if="sessionCount > 25">
+            <input type="search" class="MatcIgnoreOnKeyPress form-control" placeholder="Search"
+              :value="sessionSearch" @input="onSessionSearch($event.target.value)"/>
+          </div>
           <div ref="sessionCntr" class="MatcDashTable"></div>
         </div>
 
@@ -149,6 +153,7 @@ export default {
   data: function() {
     return {
       sessionCount: 10,
+      sessionSearch: "",
       hasDragOver: false,
       isUploading: false,
       hasDragOverPrivacy: false,
@@ -472,10 +477,23 @@ export default {
        */
       tbl.setPaging(true);
       tbl.setPagingSize(25);
+      /**
+       * A refetch rebuilds the table; the search of the previous table
+       * stays active on the new one.
+       */
+      tbl.setSearch(this.sessionSearch);
+      this.sessionTable = tbl;
 
       this.$refs.sessionCntr.innerHTML = ""
       tbl.placeAt(this.$refs.sessionCntr);
       tbl.setValue(list);
+    },
+
+    onSessionSearch (value) {
+      this.sessionSearch = value;
+      if (this.sessionTable) {
+        this.sessionTable.setSearch(value);
+      }
     },
 
     /**

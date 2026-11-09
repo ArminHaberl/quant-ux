@@ -78,3 +78,46 @@ export function getPageWindow (itemPointer, total, itemsPerPage, windowSize = 7)
     }
     return pages
 }
+
+/**
+ * The row indexes of the page starting at itemPointer. Tables that render
+ * parallel arrays (SurveyTable renders rows, labels, ids and task tags in
+ * lockstep) slice all of them by these indexes, so a page never mixes up
+ * the columns.
+ */
+export function getPageIndexes (total, itemPointer, itemsPerPage) {
+    const end = !itemsPerPage || itemsPerPage <= 0
+        ? total
+        : Math.min(total, itemPointer + itemsPerPage)
+    const indexes = []
+    for (let i = itemPointer; i < end; i++) {
+        indexes.push(i)
+    }
+    return indexes
+}
+
+/**
+ * Case insensitive "contains any value" search. An empty query matches
+ * everything. Rows are plain objects whose values can be strings, numbers,
+ * arrays (the task names) or nested objects; everything is stringified,
+ * which is what makes the table columns searchable without a per table
+ * field list.
+ */
+export function matchesSearch (row, query) {
+    const q = query == null ? '' : String(query).trim().toLowerCase()
+    if (!q) {
+        return true
+    }
+    return matchesSearchValue(row, q)
+}
+
+function matchesSearchValue (value, q) {
+    if (value == null) {
+        return false
+    }
+    if (typeof value === 'object') {
+        const values = Array.isArray(value) ? value : Object.values(value)
+        return values.some(v => matchesSearchValue(v, q))
+    }
+    return String(value).toLowerCase().indexOf(q) >= 0
+}

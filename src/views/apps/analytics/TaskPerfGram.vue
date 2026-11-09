@@ -72,6 +72,13 @@ import * as d3 from "d3"
 import DataFrame from 'common/DataFrame'
 import {iconDOM} from 'page/QIconUtil'
 
+/**
+ * Point ceiling for the per task scatter in the dialog. Beyond it the
+ * points are positioned synchronously instead of staggering one
+ * setTimeout animation per session.
+ */
+const MAX_SCATTER_POINTS = 2000;
+
 
 export default {
     name: 'TaskPerfGram',
@@ -148,6 +155,19 @@ export default {
 
 		setModel (m) {
 			this.model = m
+		},
+
+		/**
+		 * The task performance rows for the box plot and the scatter tabs.
+		 * The shared SessionModel ran the O(events x tasks) matcher once
+		 * per data load, so the dialog reuses the pre-computed rows
+		 * instead of re-running the match on every open and task toggle.
+		 */
+		_getPerformance (df, tasks){
+			if (this.sessionModel) {
+				return this.sessionModel.getValidTasksPerformance(this.annotations)
+			}
+			return new Analytics().getTaskPerformance(df, tasks)
 		},
 
 		setValue (df, task, annotations, tasks){
@@ -589,8 +609,7 @@ export default {
 			this.yMinLabel.innerHTML = ""
 			this.minLabel.innerHTML = ""
 
-			var analytics = new Analytics();
-			var perf = analytics.getTaskPerformance(df, tasks);
+			var perf = this._getPerformance(df, tasks);
 
 			// loop to get the max
 			var max_duration = 1;
@@ -759,8 +778,24 @@ export default {
 			this.minLabel.innerHTML = "0 s"
 			this.yMinLabel.innerHTML = "0"
 
-			var analytics = new Analytics();
-			var perf = analytics.getTaskPerformance(df, tasks);
+			var perf = this._getPerformance(df, tasks);
+
+			/**
+			 * One span per session per selected task, each with its own
+			 * animation timer. Beyond the cap the points are positioned
+			 * synchronously: with thousands of points the staggering
+			 * timers alone froze the dialog.
+			 */
+			let totalPoints = 0;
+			for (let id in this.selectedTasks){
+				if (this.selectedTasks[id]){
+					totalPoints += perf.select("task", "==", id).data.length;
+				}
+			}
+			let animate = totalPoints <= MAX_SCATTER_POINTS;
+			if (!animate) {
+				this.log.log(1, "render_scatter", "Skip point animation > " + totalPoints);
+			}
 
 			// loop to get the max
 			let max_duration = 1;
@@ -798,7 +833,11 @@ export default {
 						if (this._scatterPoints[key]){
 							let p = this._scatterPoints[key];
 							this.tempOwn(on(p, "click", lang.hitch(this, "selectPoint", p, s, i)));
-							setTimeout(lang.hitch(this, "animateScatterPoint",p, s, max_duration, max_count), ms);
+							if (animate) {
+								setTimeout(lang.hitch(this, "animateScatterPoint",p, s, max_duration, max_count), ms);
+							} else {
+								this.animateScatterPoint(p, s, max_duration, max_count);
+							}
 						} else {
 							let p = db.span("MatxScatterPoint").build(this.canvas);
 							p.style.bottom =  "-5%";
@@ -806,8 +845,11 @@ export default {
 							p.style.background = this.taskColors[id];
 							this._scatterPoints[key] = p;
 							this.tempOwn(on(p, "click", lang.hitch(this, "selectPoint", p, s, i)));
-							
-							setTimeout(lang.hitch(this, "animateScatterPoint",p, s, max_duration, max_count), ms);
+							if (animate) {
+								setTimeout(lang.hitch(this, "animateScatterPoint",p, s, max_duration, max_count), ms);
+							} else {
+								this.animateScatterPoint(p, s, max_duration, max_count);
+							}
 						}
 					}
 				} else {

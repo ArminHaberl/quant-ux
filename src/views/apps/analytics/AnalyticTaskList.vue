@@ -265,7 +265,8 @@ export default {
         var gram = this.$new(TaskPerfGram, {
           model: this.app,
           dialog: dialog,
-          mode: this.mode
+          mode: this.mode,
+          sessionModel: this.sessionModel
         });
         gram.setValue(this.df, task, this.annotation, this.test.tasks);
         gram.placeAt(d);

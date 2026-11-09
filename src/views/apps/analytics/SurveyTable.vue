@@ -1,6 +1,14 @@
 <template>
 
-  <table class="table" v-if="sortedTable.rows.length > 0 && sortedTable.cols.length > 0">
+  <div>
+  <div class="MatcCreateSearch MatcFlexColumns" v-if="hasSearch">
+    <input type="search" class="MatcIgnoreOnKeyPress form-control" placeholder="Search"
+      :value="searchQuery" @input="onSearch($event.target.value)"/>
+  </div>
+
+  <div class="MatcSurveySectionTableCntr" ref="tableCntr"
+    v-if="sortedTable.rows.length > 0 && sortedTable.cols.length > 0">
+    <table class="table">
     <thead>
       <tr v-if="showGroups">
         <th class="MatcSurveySectionTableNumber MatcSurveySectionTableBorderRight">
@@ -42,7 +50,7 @@
     </thead>
 
     <tbody>
-      <tr v-for="(row, r) in sortedTable.rows" :key="sortedTable.ids[r] || r">
+      <tr v-for="r in visibleIndexes" :key="sortedTable.ids[r] || r">
         <td class="MatcSurveySectionTableBorderRight">
           <span class="MatcSurveySectionTableLabel">{{ sortedTable.labels[r] }}</span>
         </td>
@@ -55,7 +63,7 @@
         </td>
         <template v-for="col in sortedTable.cols">
           <td :key="col.key" v-if="col.hidden !== true">
-            {{ row[col.key] }}
+            {{ sortedTable.rows[r][col.key] }}
           </td>
         </template>
 
@@ -92,7 +100,35 @@
         </td>
       </tr>
     </tbody>
-  </table>
+    </table>
+  </div>
+
+  <!--
+    The pager mirrors the DOM of common/Table (vommondTable > pagination),
+    so the global .vommondTable .pagination styles render it exactly like
+    the pager of the Test tab. Every <li> carries an explicit key and the
+    arrows are always rendered (empty at the boundary, like Table): an
+    unkeyed <li> with a v-if next to a keyed v-for is the one sibling
+    pattern Vue 2's patcher handles worst, which is what broke the arrows.
+  -->
+  <div class="vommondTable" v-if="hasPages">
+    <div class="pagination pagination-small">
+      <ul>
+        <li :key="'pager-prev'" @click="goBackward()">
+          <a v-if="pagePointer > 0"><span class="mdi mdi-chevron-left"></span></a>
+        </li>
+        <li v-for="page in pages" :key="page" :class="{active: page * itemsPerPage === pagePointer}"
+          @click="setPage(page * itemsPerPage)">
+          {{ page + 1 }}
+        </li>
+        <li :key="'pager-next'" @click="goForward()">
+          <a v-if="pagePointer + itemsPerPage < filteredCount"><span class="mdi mdi-chevron-right"></span></a>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  </div>
 
 </template>
 <style lang="scss">
@@ -103,6 +139,7 @@ import Logger from 'common/Logger'
 // import Analytics from "dash/Analytics";
 // import lang from 'dojo/_base/lang'
 import QIcon from '../../../page/QIcon'
+import { getPageIndexes, getPageWindow, clampPagePointer, matchesSearch } from 'common/TableUtil'
 
 
 export default {
@@ -111,7 +148,15 @@ export default {
   props: ['test', 'app', 'events', 'annotation', 'viewOptions', 'pub', 'table'],
   data: function () {
     return {
-      showGroups: false
+      showGroups: false,
+      /**
+       * One <tr> per session used to be rendered for the complete data
+       * volume; the rows are now paginated. The AVG summary row below the
+       * table and the CSV download still work on all rows.
+       */
+      itemsPerPage: 25,
+      itemPointer: 0,
+      searchQuery: ''
     }
   },
   components: {
@@ -121,6 +166,71 @@ export default {
     sortedTable() {
 
       return this.table
+    },
+    /**
+     * The indexes of the rows that match the search, or null when no
+     * search is active (the full row order is used then). The session id
+     * and the label are searched in lockstep with the row cells.
+     */
+    searchHits () {
+      if (!this.searchQuery) {
+        return null
+      }
+      const table = this.sortedTable
+      const rows = table.rows || []
+      const ids = table.ids || []
+      const labels = table.labels || []
+      const tasks = table.tasks || []
+      const hits = []
+      for (let r = 0; r < rows.length; r++) {
+        if (matchesSearch(rows[r], this.searchQuery) ||
+            matchesSearch(ids[r], this.searchQuery) ||
+            matchesSearch(labels[r], this.searchQuery) ||
+            matchesSearch(tasks[r], this.searchQuery)) {
+          hits.push(r)
+        }
+      }
+      return hits
+    },
+    filteredCount () {
+      if (this.searchHits) {
+        return this.searchHits.length
+      }
+      const rows = this.sortedTable.rows
+      return rows ? rows.length : 0
+    },
+    /**
+     * Clamped on read, so a refetch that shrinks the data cannot point
+     * the pager beyond the last page.
+     */
+    pagePointer () {
+      return clampPagePointer(this.itemPointer, this.filteredCount, this.itemsPerPage)
+    },
+    /**
+     * The row indexes of the current page, resolved through the search
+     * hits, so rows, labels, ids and task tags stay in lockstep.
+     */
+    visibleIndexes () {
+      const hits = this.searchHits
+      const source = hits ? hits.length : this.filteredCount
+      const offsets = getPageIndexes(source, this.pagePointer, this.itemsPerPage)
+      if (!hits) {
+        return offsets
+      }
+      return offsets.map(i => hits[i])
+    },
+    pages () {
+      return getPageWindow(this.pagePointer, this.filteredCount, this.itemsPerPage)
+    },
+    hasPages () {
+      return this.filteredCount > this.itemsPerPage
+    },
+    /**
+     * The search box shows once the table has more than one page, or
+     * while a search is active (so it does not vanish with the results).
+     */
+    hasSearch () {
+      return this.filteredCount > this.itemsPerPage || this.searchQuery.length > 0
     },
     hasVideo() {
       return this.viewOptions.showVideo
@@ -192,6 +302,41 @@ export default {
     getVideoURL(id) {
       return "#/" + this.urlPrefix + "/" + this.app.id + "/replay/" + id + ".html";
     },
+    onSearch (value) {
+      /**
+       * The raw value is stored for the input binding; matchesSearch()
+       * normalizes (trim + lowercase) on its own.
+       */
+      this.searchQuery = value == null ? '' : value
+      this.itemPointer = 0
+      this.scrollToTop()
+    },
+    setPage (pointer) {
+      this.itemPointer = pointer
+      this.scrollToTop()
+    },
+    goBackward () {
+      this.itemPointer = Math.max(this.pagePointer - this.itemsPerPage, 0)
+      this.scrollToTop()
+    },
+    goForward () {
+      this.itemPointer = this.pagePointer + this.itemsPerPage
+      this.scrollToTop()
+    },
+    /**
+     * The rows live in the overflow container; after a page change it
+     * stays scrolled down at the pager, so the user would only see the
+     * tail of the new page. Jump back to the first row, which is what
+     * the Test tab shows without a scroll container.
+     */
+    scrollToTop () {
+      const cntr = this.$refs.tableCntr
+      if (cntr) {
+        this.$nextTick(() => {
+          cntr.scrollTop = 0
+        })
+      }
+    }
   },
   watch: {
     table(v) {

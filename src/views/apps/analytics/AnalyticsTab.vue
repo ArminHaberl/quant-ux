@@ -63,7 +63,8 @@
             :test="test"
             :app="app"
             :events="events"
-            :annotation="annotation"/>
+            :annotation="annotation"
+            :annotationVersion="annotationVersion"/>
         </div>
 
     </section>

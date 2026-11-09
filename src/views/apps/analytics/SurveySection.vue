@@ -28,7 +28,7 @@
       </div>
     </div>
 
-     <div class="MatcSurveySectionTableCntr">
+     <div>
 
       <SurveyTable 
           v-if="table && table.rows.length > 0 && table.cols.length > 0" 
@@ -65,7 +65,7 @@ import { escapeCsv } from '../../../utils/csv';
 export default {
     name: 'SurveySection',
     mixins:[],
-    props: ['test', 'app', 'events', 'annotation', 'pub'],
+    props: ['test', 'app', 'events', 'annotation', 'pub', 'annotationVersion'],
     data: function () {
         return {
           isLoaded: false,
@@ -138,6 +138,10 @@ export default {
           this.$refs.dialog.show(this.$refs.dropDown.$el)
         }
       },
+      refreshTable () {
+        this.table = this.getTable()
+        this.isLoaded = true
+      },
       toggleColumn (col, selected) {
           col.hidden = !selected
       },
@@ -169,13 +173,38 @@ export default {
           }
         },
     },
+    watch: {
+      /**
+       * The table used to be computed once at mount and never again:
+       * event refetches, test edits and annotation changes (valid /
+       * invalid) left it stale, and since the tab is keep-alive cached
+       * there is no remount that would rebuild it either.
+       */
+      events () {
+        this.refreshTable()
+      },
+      test () {
+        this.refreshTable()
+      },
+      annotationVersion () {
+        /**
+         * Annotations are mutated in place, so the version is the
+         * reactive trigger; the computation below reads the current
+         * annotation array.
+         */
+        this.refreshTable()
+      },
+      viewOptions () {
+        /**
+         * The task columns (success, duration, interactions) are only
+         * computed when their columns are shown.
+         */
+        this.refreshTable()
+      }
+    },
     mounted () {
       this.logger = new Logger('SurveySection')
-      if (this.test && this.test.tasks && this.test.tasks.length > 0) {
-        //this.viewOptions.showTasksSucess = true
-      }
-      this.table = this.getTable()
-      this.isLoaded = true
+      this.refreshTable()
     }
 }
 </script>

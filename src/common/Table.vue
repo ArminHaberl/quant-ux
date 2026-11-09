@@ -12,7 +12,7 @@ import lang from "dojo/_base/lang";
 import touch from "dojo/touch";
 import Logger from "common/Logger";
 import DomBuilder from "common/DomBuilder";
-import { getPageWindow, getPagedRows, clampPagePointer } from "common/TableUtil";
+import { getPageWindow, getPagedRows, clampPagePointer, matchesSearch } from "common/TableUtil";
 import {iconDOM} from "../page/QIconUtil";
 
 export default {
@@ -26,6 +26,7 @@ export default {
       order: true,
       hasPaging: false,
       totalCount: 0,
+      searchQuery: "",
       columns: null,
       actions: null,
       rows: [],
@@ -50,6 +51,22 @@ export default {
 
     setPagingSize: function(itemsPerPage) {
       this.itemsPerPage = itemsPerPage;
+    },
+
+    /**
+     * Filters the rows case insensitive over all their values (the pure
+     * matcher lives in TableUtil so it is testable and shared with the
+     * survey table). The filtered set is what the pager and the pages
+     * work on, so searching keeps the sort order and resets to page one.
+     */
+    setSearch: function(query) {
+      const value = query == null ? "" : String(query).trim().toLowerCase();
+      if (value === this.searchQuery) {
+        return;
+      }
+      this.searchQuery = value;
+      this.itemPointer = 0;
+      this.render();
     },
 
     setActions: function(actions) {
@@ -82,6 +99,22 @@ export default {
       this.cleanUpTempListener();
       this.domNode.innerHTML = "";
 
+      /**
+       * The search filter is computed once per render; pager, pages and
+       * the pointer clamp all work on the filtered set.
+       */
+      this._searchRows = null;
+      if (this.searchQuery) {
+        this._searchRows = this.rows.filter(row =>
+          matchesSearch(row, this.searchQuery)
+        );
+      }
+      this.itemPointer = clampPagePointer(
+        this.itemPointer,
+        this.getFilteredCount(),
+        this.itemsPerPage
+      );
+
       var db = new DomBuilder();
 
       var table = db.table("vommondTable table is-hoverable").build();
@@ -96,6 +129,10 @@ export default {
       if (this.hasPaging) {
         this.createPagging();
       }
+    },
+
+    getFilteredCount: function() {
+      return this._searchRows ? this._searchRows.length : this.totalCount;
     },
 
     renderHeader: function(table, db) {
@@ -160,10 +197,11 @@ export default {
     },
 
     getVisibleRows: function() {
+      const rows = this._searchRows || this.rows;
       if (!this.hasPaging) {
-        return this.rows;
+        return rows;
       }
-      return getPagedRows(this.rows, this.itemPointer, this.itemsPerPage);
+      return getPagedRows(rows, this.itemPointer, this.itemsPerPage);
     },
 
     renderRow: function(row, tbody, j, db) {
@@ -248,7 +286,12 @@ export default {
           this.itemPointer
       );
 
-      if (this.totalCount > this.itemsPerPage) {
+      /**
+       * The pager works on the filtered set, so searching can keep the
+       * bar and the pages honest.
+       */
+      var totalCount = this.getFilteredCount();
+      if (totalCount > this.itemsPerPage) {
         var div = document.createElement("div");
         css.add(div, "pagination pagination-small");
 
@@ -261,7 +304,7 @@ export default {
          * Previous/next reuse the existing onBackward()/onForward().
          */
         var me = this;
-        var pages = getPageWindow(this.itemPointer, this.totalCount, this.itemsPerPage);
+        var pages = getPageWindow(this.itemPointer, totalCount, this.itemsPerPage);
 
         var prev = document.createElement("li");
         if (this.itemPointer > 0) {
@@ -290,7 +333,7 @@ export default {
         });
 
         var next = document.createElement("li");
-        if (this.itemPointer + this.itemsPerPage < this.totalCount) {
+        if (this.itemPointer + this.itemsPerPage < totalCount) {
           var nextLink = document.createElement("a");
           nextLink.innerHTML = '<span class="mdi mdi-chevron-right"></span>';
           next.appendChild(nextLink);

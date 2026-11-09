@@ -79,3 +79,62 @@ test('Test TableUtil.getPageWindow() > centers the current page and clamps to th
   // a pointer beyond the data does not explode (setValue clamps, but be safe)
   expect(TableUtil.getPageWindow(999, total, ipp)).toEqual([13, 14, 15, 16, 17, 18, 19])
 })
+
+test('Test TableUtil.getPageIndexes() > the row indexes of one page', () => {
+  const total = 60
+
+  // first page
+  expect(TableUtil.getPageIndexes(total, 0, 25)).toEqual([
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24
+  ])
+
+  // last partial page
+  expect(TableUtil.getPageIndexes(total, 50, 25)).toEqual([50, 51, 52, 53, 54, 55, 56, 57, 58, 59])
+
+  // pointer at the end: empty page
+  expect(TableUtil.getPageIndexes(total, 60, 25)).toEqual([])
+
+  // no page size: every index (tables without paging)
+  expect(TableUtil.getPageIndexes(3, 0).length).toBe(3)
+
+  // parallel arrays slice in lockstep: rows, labels, ids, tasks
+  const rows = ['a', 'b', 'c', 'd', 'e']
+  const labels = ['A', 'B', 'C', 'D', 'E']
+  const page = TableUtil.getPageIndexes(rows.length, 2, 2)
+  expect(page.map(i => rows[i])).toEqual(['c', 'd'])
+  expect(page.map(i => labels[i])).toEqual(['C', 'D'])
+})
+
+test('Test TableUtil.matchesSearch() > case insensitive contains over all values', () => {
+  const row = {
+    session: 's10004_28487',
+    user: 'User B',
+    label: 'Test 2',
+    taskNames: ['Go to second screen', 'Abrir e fechar menu'],
+    taskSuccess: 1,
+    duration: 42
+  }
+
+  // empty or blank query matches everything
+  expect(TableUtil.matchesSearch(row, '')).toBe(true)
+  expect(TableUtil.matchesSearch(row, '   ')).toBe(true)
+  expect(TableUtil.matchesSearch(row, null)).toBe(true)
+
+  // case insensitive substring over string values
+  expect(TableUtil.matchesSearch(row, 'user b')).toBe(true)
+  expect(TableUtil.matchesSearch(row, 's10004')).toBe(true)
+  expect(TableUtil.matchesSearch(row, 'USER B')).toBe(true)
+
+  // nested arrays (the task names) are searched too
+  expect(TableUtil.matchesSearch(row, 'abrir')).toBe(true)
+  expect(TableUtil.matchesSearch(row, 'second screen')).toBe(true)
+
+  // numbers are stringified
+  expect(TableUtil.matchesSearch(row, '42')).toBe(true)
+  expect(TableUtil.matchesSearch(row, '421')).toBe(false)
+
+  // misses
+  expect(TableUtil.matchesSearch(row, 'nowhere')).toBe(false)
+  expect(TableUtil.matchesSearch(null, 'x')).toBe(false)
+})
+
