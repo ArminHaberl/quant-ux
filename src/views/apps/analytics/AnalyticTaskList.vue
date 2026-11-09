@@ -44,7 +44,7 @@ import HelpButton from "help/HelpButton";
 export default {
   name: "AnalyticsTaskList",
   mixins: [TestSettings, DojoWidget],
-  props: ['hash'],
+  props: ['hash', 'sessionModel', 'annotationVersion'],
   data: function() {
     return {
       appID: "",
@@ -81,10 +81,17 @@ export default {
       const headers = ["Name","Start","Success","Duration (Mean)","Duration (Median)","Duration (STD)","Events (Mean)","Events (STD)"];
       let csvContent = headers.map(escapeCsv).join(",") + "\n";
 
-      const tasks = this.test.tasks;
-      const analytics = new Analytics();
-      const perf = analytics.getTaskPerformance(this.df, tasks);
-      const summaries = analytics.getTaskSummary(this.df, tasks, this.annotation);
+      /**
+       * The shared SessionModel computed the two matcher passes (task
+       * performance + task starts) once per data load; here the summaries
+       * merge in the annotations without re-running the matchers.
+       */
+      const perf = this.sessionModel
+        ? this.sessionModel.getValidTasksPerformance(this.annotation)
+        : new Analytics().getTaskPerformance(this.df, this.test.tasks);
+      const summaries = this.sessionModel
+        ? this.sessionModel.getTaskSummaries(this.annotation)
+        : new Analytics().getTaskSummary(this.df, this.test.tasks, this.annotation);
 
       for (let i = 0; i < summaries.length; i++) {
         const summary = summaries[i];
@@ -157,10 +164,16 @@ export default {
       var col = db.div("column").build(row);
 
       var tasks = this.test.tasks;
-      var analytics = new Analytics();
 
-      var summaries = analytics.getTaskSummary(this.df, tasks, this.annotation);
- 
+      /**
+       * The SessionModel did the matcher passes once per data load and
+       * re-merges the annotations per call, which was the cost wall for
+       * opening the results tab with many sessions.
+       */
+      var summaries = this.sessionModel
+        ? this.sessionModel.getTaskSummaries(this.annotation)
+        : new Analytics().getTaskSummary(this.df, tasks, this.annotation);
+  
       var me = this;
       var tbl = this.$new(Table);
       tbl.actionLabel = 'Details'
@@ -276,7 +289,17 @@ export default {
   },
   watch: {
     events () {
+      if (!this.sessionModel) {
         this.render();
+      }
+    },
+    sessionModel () {
+      this.render();
+    },
+    annotationVersion () {
+      if (this.sessionModel) {
+        this.render();
+      }
     }
   },
   mounted() {}

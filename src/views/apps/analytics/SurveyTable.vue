@@ -42,7 +42,7 @@
     </thead>
 
     <tbody>
-      <tr v-for="(row, r) in sortedTable.rows" :key="r">
+      <tr v-for="(row, r) in sortedTable.rows" :key="sortedTable.ids[r] || r">
         <td class="MatcSurveySectionTableBorderRight">
           <span class="MatcSurveySectionTableLabel">{{ sortedTable.labels[r] }}</span>
         </td>

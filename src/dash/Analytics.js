@@ -50,7 +50,14 @@ export default class {
 		eventsDF.sortBy("time");
 
 		let taskPer = {}
-		if (test.tasks) {
+		/**
+		 * The task performance rows only feed the optional task columns,
+		 * which are hidden unless the user ticks them in the table options.
+		 * Running the O(events x tasks) matcher for tables that will never
+		 * show those columns (the default) is wasted work.
+		 */
+		const needsTaskColumns = showTasksSucess || showTasksDuration || showTasksInteraction
+		if (test.tasks && needsTaskColumns) {
 			const taskPerDF = this.getTaskPerformance(eventsDF, test.tasks)
 			taskPerDF.foreach(row => {
 				if (!taskPer[row.session]) {
@@ -204,10 +211,24 @@ export default class {
 			 * they collapse into one column and the last sample wins.
 			 */
 			const sessionEvents = df.as_array().map(e => {
-				if (!e || !e.widget) { return e }
-				const modelID = this.toModelWidgetID(e.widget)
-				if (modelID === e.widget) { return e }
-				return Object.assign({}, e, { widget: modelID })
+				/**
+				 * Copy every event once: below we drop the user, and the
+				 * sortBy() calls further up reorder the passed array in
+				 * place. With a copy the caller's event log is untouched,
+				 * which is why SurveySection no longer has to JSON-clone
+				 * the whole log before calling this method.
+				 *
+				 * A Repeater renders N copies that all map to the same
+				 * widget, so they collapse into one column and the last
+				 * sample wins.
+				 */
+				if (!e) { return e }
+				const copy = Object.assign({}, e)
+				delete copy.user
+				if (!copy.widget) { return copy }
+				const modelID = this.toModelWidgetID(copy.widget)
+				if (modelID === copy.widget) { return copy }
+				return Object.assign(copy, { widget: modelID })
 			});
 			sessionEvents.forEach(e => {
 				delete e.user
@@ -835,7 +856,7 @@ export default class {
 	}
 
 
-	getSessionDetails (events, tasks) {
+	getSessionDetails (events, tasks, taskPerformance) {
 		events.sortBy("time");
 		const sessions = this.getSessionSummary(events)
 		Object.values(sessions).forEach(session => {
@@ -851,8 +872,13 @@ export default class {
 			}
 		})
 		
-		const taskPerformance = this.getTaskPerformance(events, tasks).data
-		taskPerformance.forEach(perf => {
+		/**
+		 * taskPerformance lets the caller (SessionModel) pass the
+		 * pre-computed matcher rows, so the plot does not have to re-run
+		 * the matcher for its own data load.
+		 */
+		const perfRows = taskPerformance || this.getTaskPerformance(events, tasks).data
+		perfRows.forEach(perf => {
 			const session = sessions[perf.session]
 			if (session) {
 				session.tasks++
@@ -977,14 +1003,32 @@ export default class {
 	}
 
 	getMergedTaskPerformance(df, tasks, annotations) {
-		let result = [];
 		const temp = this.getTaskPerformance(df, tasks);
+		return this.mergeAnnotations(temp, annotations);
+	}
 
-
+	/**
+	 * Applies the manual annotations on a task performance DataFrame:
+	 * annotated success without a match adds an artificial row, annotated
+	 * failure removes the real one.
+	 *
+	 * Historically this lived inside getMergedTaskPerformance() and mutated
+	 * the DataFrame coming from the matcher. Now it takes any performance
+	 * DF and works on a copy of its rows, so a cached, pre-computed
+	 * performance (SessionModel) can be merged over and over again without
+	 * re-running the matcher.
+	 */
+	mergeAnnotations(taskPerformanceDF, annotations) {
+		annotations = annotations || [];
 		/**
-		 * build fast lookup
+		 * build fast lookup on a copy of the rows, so the input DataFrame
+		 * stays untouched (its rows are shared with the input, but the
+		 * merge never rewrites them; artificial rows are fresh objects).
 		 */
-		temp.setIndex(["session", "task"])
+		const temp = new DataFrame(taskPerformanceDF.data.slice());
+		temp.setIndex(["session", "task"]);
+
+		let result = [];
 
 		/**
 		 * first add all rows from the annotations.
@@ -1098,14 +1142,26 @@ export default class {
 	}
 
 
-	getTaskSummary(df, tasks, annotation) {
+	getTaskSummary(df, tasks, annotation, precomputed) {
 
 		const sessionCount = df.count("session").size();
 
-		const tasksPerformance = this.getMergedTaskPerformance(df, tasks, annotation);
+		/**
+		 * Optionally skip the two matcher passes: the caller (SessionModel)
+		 * has them already computed once per data load, so only the cheap
+		 * annotation merge has to run here.
+		 */
+		let tasksPerformance
+		let startTaskPerformace
+		if (precomputed && precomputed.tasksPerformance) {
+			tasksPerformance = this.mergeAnnotations(precomputed.tasksPerformance, annotation)
+			startTaskPerformace = precomputed.startPerformance || new DataFrame([])
+		} else {
+			tasksPerformance = this.getMergedTaskPerformance(df, tasks, annotation);
+			startTaskPerformace = this.getTaskStarts(df, tasks)
+		}
 		const taskGrouping = tasksPerformance.groupBy("task");
 	
-		const startTaskPerformace = this.getTaskStarts(df, tasks)
 		const startGrouping = startTaskPerformace.groupBy("task")
 	
 		const list = [];

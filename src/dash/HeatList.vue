@@ -31,6 +31,16 @@ export default {
     };
   },
   components: {},
+  watch: {
+    /**
+     * The heat map tab stays alive while the parent refetches the events
+     * (the tab is keep-alive cached now, and no remount re-buckets the
+     * events). Rebuild the buckets and redraw the previews.
+     */
+    events () {
+      this.setValue(this.model);
+    }
+  },
   methods: {
     /**
      * Is called from parent mounted
@@ -46,11 +56,32 @@ export default {
 
     setValue(value) {
       this.model = value;
+      /**
+       * The complete event log bucketed by screen once. Previously every
+       * screen preview reran events.filter() over ALL events, which is
+       * O(screens x events) big enough to freeze the heat map tab.
+       */
+      this._eventsByScreen = this.buildEventsByScreen(this.events)
       this.value = this.getScreens();
       if (this.value.length == 0) {
         this.add = true;
       }
       this.render(this.value, this.animate);
+    },
+
+    buildEventsByScreen (events) {
+      const byScreen = {};
+      if (events) {
+        for (let i = 0; i < events.length; i++) {
+          const e = events[i];
+          const key = e.screen;
+          if (!byScreen[key]) {
+            byScreen[key] = [];
+          }
+          byScreen[key].push(e);
+        }
+      }
+      return byScreen;
     },
 
     setInvitation(h) {
@@ -79,8 +110,8 @@ export default {
       if (this.hash) {
         heatmap.setInvitation(this.hash);
       }
-      if (this.events) {
-        heatmap.setEvents(this.events.filter(e => e.screen === screen.id))
+      if (this._eventsByScreen) {
+        heatmap.setEvents(this._eventsByScreen[screen.id] || [])
       }
 
       return heatmap;

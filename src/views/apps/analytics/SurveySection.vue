@@ -57,7 +57,6 @@ import Logger from 'common/Logger'
 import DropDownSelect from 'page/DropDownSelect'
 import HelpButton from "help/HelpButton";
 import Analytics from "dash/Analytics";
-import lang from 'dojo/_base/lang'
 import SurveyTable from './SurveyTable'
 import SurveyDialog from './SurveyDialog'
 
@@ -121,7 +120,13 @@ export default {
     methods: {
       getTable () {
         const analytics = new Analytics();
-        const events = analytics.filterEvents(lang.clone(this.events), this.annotation)
+        /**
+         * getSurveyAnswers() sorts a copy of the array and works on event
+         * copies. It used to require a full JSON clone of the event log
+         * (which becomes seconds of blocking work for large experiments);
+         * a shallow slice is enough now.
+         */
+        const events = analytics.filterEvents(this.events.slice(), this.annotation)
         return analytics.getSurveyAnswers(events, 
           this.app, 
           this.test, 

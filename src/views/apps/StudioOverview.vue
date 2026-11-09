@@ -69,50 +69,65 @@
 
         <section class="StudioOverviewContent">
 
+          <!--
+            One keep-alive per tab with v-if on the component inside. The
+            tabs used to be destroyed and recreated on every switch, which
+            re-ran the complete analytics pipeline of the incoming tab.
+            With keep-alive a switch only deactivates / reactivates the
+            cached instance. The key resets the cache when another app is
+            opened (this component survives app navigation), and the LRU
+            max bounds the memory of the heatmap canvases / replay caches.
+          -->
 
-          <div v-if="tab == 'design'">
-            <div class="StudioOverviewTabContent">
-              <div>
-                <h3>{{ $t('app.description')}}</h3>
-                <AutoTextArea  :inline="true" v-model="app.description" @blur="onChangeAppDescription" :placeholder="$t('app.description-hint')"/>
-              </div>
-
-              <div>
-                <h3 class="" >{{ $t('app.screen-list')}}</h3>
-                <ScreenList :app="app" v-if="appLoaded" :pub="isPublic" class="MatcMarginTop" />
-              </div>
-
-            </div>
-
-
+          <div>
+            <keep-alive :max="6">
+              <StudioDesignTab v-if="tab === 'design' && appLoaded" :key="'design-' + appID" :app="app"
+                :isPublic="isPublic" @change="onChangeAppDescription" />
+            </keep-alive>
           </div>
-          <div v-if="tab == 'test'">
-            <TestTab :loading="loading" :app="app" :test="testSettings" :hash="hash" :annotation="sessionAnnotations"
-              :events="events" @reloadEvents="reloadEvents" v-if="restLoaded" @change="onTestChange" />
+          <div>
+            <keep-alive :max="6">
+              <TestTab :loading="loading" :app="app" :test="testSettings" :hash="hash" :annotation="sessionAnnotations"
+                :events="events" :sessionModel="sessionModel" :annotationVersion="annotationVersion"
+                @reloadEvents="reloadEvents" v-if="tab === 'test' && restLoaded" :key="'test-' + appID"
+                @change="onTestChange" />
+            </keep-alive>
           </div>
-          <div v-if="tab == 'analyze'">
-            <AnalyticsTab :loading="loading" :app="app" :hash="hash" :test="testSettings" :annotation="sessionAnnotations"
-              :events="events" v-if="restLoaded" @change="onTestChange" />
-          </div>
-
-          <div v-if="tab == 'heat'">
-            <HeatTab :loading="loading" :app="app" :test="testSettings" :annotation="sessionAnnotations" :events="events"
-              v-if="restLoaded" />
-          </div>
-
-          <div v-if="tab == 'video'">
-            <VideoTab :loading="loading" :app="app" :test="testSettings" :annotation="sessionAnnotations" :events="events"
-              v-if="restLoaded" @change="onAnnotationChange" />
+          <div>
+            <keep-alive :max="6">
+              <AnalyticsTab :loading="loading" :app="app" :hash="hash" :test="testSettings" :annotation="sessionAnnotations"
+                :events="events" :sessionModel="sessionModel" :annotationVersion="annotationVersion"
+                v-if="tab === 'analyze' && restLoaded" :key="'analyze-' + appID" @change="onTestChange" />
+            </keep-alive>
           </div>
 
-          <div v-if="tab == 'settings'">
-            <SettingsTab :loading="loading" :app="app" :user="user" :invitations="invitations" v-if="restLoaded"
-              @change="onSettingsChange" />
+          <div>
+            <keep-alive :max="6">
+              <HeatTab :loading="loading" :app="app" :test="testSettings" :annotation="sessionAnnotations" :events="events"
+                v-if="tab === 'heat' && restLoaded" :key="'heat-' + appID" />
+            </keep-alive>
           </div>
 
-          <div v-if="tab == 'comments'">
-            <CommentsTab :loading="loading" :app="app" :user="user" :invitations="invitations" v-if="restLoaded"
-              @change="onSettingsChange" />
+          <div>
+            <keep-alive :max="6">
+              <VideoTab :loading="loading" :app="app" :test="testSettings" :annotation="sessionAnnotations" :events="events"
+                :sessionModel="sessionModel" v-if="tab === 'video' && restLoaded" :key="'video-' + appID"
+                @change="onAnnotationChange" />
+            </keep-alive>
+          </div>
+
+          <div>
+            <keep-alive :max="6">
+              <SettingsTab :loading="loading" :app="app" :user="user" :invitations="invitations"
+                v-if="tab === 'settings' && restLoaded" :key="'settings-' + appID" @change="onSettingsChange" />
+            </keep-alive>
+          </div>
+
+          <div>
+            <keep-alive :max="6">
+              <CommentsTab :loading="loading" :app="app" :user="user" :invitations="invitations"
+                v-if="tab === 'comments' && restLoaded" :key="'comments-' + appID" @change="onSettingsChange" />
+            </keep-alive>
           </div>
 
         </section>
@@ -126,6 +141,8 @@
             :user="user" 
             :test="testSettings" 
             :annotation="sessionAnnotations" 
+            :sessionModel="sessionModel"
+            :annotationVersion="annotationVersion"
             :events="events"/>
       </template>
     </SplitContainer>
@@ -142,23 +159,28 @@ import touch from "dojo/touch";
 import DomBuilder from "common/DomBuilder";
 import * as UIUtil from '../../util/UIUtil'
 
-import ScreenList from "page/ScreenList";
-import AutoTextArea from 'page/AutoTextArea'
 import QIcon from "page/QIcon";
 import TestTab from "views/apps/test/TestTab";
 import AnalyticsTab from "views/apps/analytics/AnalyticsTab";
-import HeatTab from "views/apps/analytics/HeatTab";
-import VideoTab from "views/apps/test/VideoTab";
+import StudioDesignTab from './StudioDesignTab'
 import CommentsTab from 'views/apps/CommentsTab'
 import SettingsTab from "views/apps/SettingsTab";
 import SplitContainer from "page/SplitContainer";
 import QIconDropDown from 'page/QIconDropDown'
 import StudioColorDropDown from './StudioColorDropDown'
 import StudioDetails from './StudioDetails'
+import Services from "services/Services";
+import SessionModel from "dash/SessionModel";
 
 import Team from "page/Team";
 import Share from "page/Share";
-import Services from "services/Services";
+
+/**
+ * Refetch no more than this after every window focus. The focus listener
+ * used to re-download the complete event log and invalidate every tab on
+ * every focus loss/regain.
+ */
+const EVENTS_REFETCH_TTL = 60 * 1000;
 
 export default {
   name: "Overview",
@@ -173,6 +195,13 @@ export default {
       app: {
         name: "loading..."
       },
+      /**
+       * The per session block: built once per (events, tasks) change and
+       * handed to the tabs. A null model makes every tab fall back to
+       * computing its own rows, which keeps public/legacy views working.
+       */
+      sessionModel: null,
+      annotationVersion: 0,
       dotOptions: [
         {label: 'Rename', callback: (o, e) => this.onRename(e), icon: "EventKeykoard"},
         {label: 'Duplicate', callback: (o, e) => this.onDuplicate(e), icon: "Duplicate"},
@@ -192,20 +221,24 @@ export default {
     };
   },
   components: {
-    ScreenList: ScreenList,
+    StudioDesignTab: StudioDesignTab,
     TestTab: TestTab,
     AnalyticsTab: AnalyticsTab,
-    VideoTab: VideoTab,
+    /**
+     * The heat map tab (canvas rendering) and the replay tab (replay
+     * engines) are the heaviest chunks; they load only when their tab is
+     * opened the first time, so app open does not pay for them.
+     */
+    HeatTab: () => import("views/apps/analytics/HeatTab"),
+    VideoTab: () => import("views/apps/test/VideoTab"),
     SettingsTab: SettingsTab,
     Team: Team,
-    HeatTab: HeatTab,
     StudioColorDropDown: StudioColorDropDown,
     QIcon: QIcon,
     QIconDropDown: QIconDropDown,
     StudioDetails: StudioDetails,
     SplitContainer: SplitContainer,
-    CommentsTab: CommentsTab,
-    AutoTextArea: AutoTextArea
+    CommentsTab: CommentsTab
 },
   computed: {
     isPublic() {
@@ -318,10 +351,48 @@ export default {
     onAnnotationChange(annos) {
       this.logger.info("onAnnotationChange", "enter > ", annos);
       /**
-       * See, to work, because if do deep changes. Would be
-       * better to update and fix all the watches in the tabs...
+       * The children (VideoTab onAnnotationChange) mutate the shared
+       * annotation objects in place, so a reference assignment alone does
+       * not invalidate anything. Bump the version: the tabs watch it and
+       * recompute their session rows / summaries, which used to stay
+       * stale until the next refetch.
        */
-      //this.sessionAnnotations = annos
+      if (annos) {
+        this.sessionAnnotations = annos
+      }
+      this.annotationVersion++
+    },
+
+    /**
+     * The session model is the shared, once-per-data-load computation
+     * every tab consumes (TestTab rows, KPI factors, task summaries,
+     * replay lookups). It is rebuilt only when the events array or the
+     * tasks array of the test settings change; annotation changes are
+     * merged per call and do not need a rebuild.
+     */
+    updateSessionModel() {
+      const events = this.events;
+      const testSettings = this.testSettings;
+      if (!events || events.length === 0 || !testSettings) {
+        return;
+      }
+      const tasks = Array.isArray(testSettings.tasks) ? testSettings.tasks : [];
+      if (this._modelKey && this._modelKey[0] === events && this._modelKey[1] === tasks) {
+        return;
+      }
+      this._modelKey = [events, tasks];
+      try {
+        this.sessionModel = new SessionModel(events, tasks);
+        this.logger.log(1, "updateSessionModel", "Sessions " + this.sessionModel.sessionCount);
+      } catch (e) {
+        /**
+         * A failing build must not break the app view: every consumer
+         * falls back to computing its own rows.
+         */
+        this.logger.error("updateSessionModel", "Error");
+        this.logger.sendError(e);
+        this.sessionModel = null;
+      }
     },
     async loadApp() {
       let id = this.$route.params.id;
@@ -349,6 +420,7 @@ export default {
           this.loading = false
           this.appLoaded = true;
           this.logger.log(1, "loadEvents", "Found " + events.length + " events");
+          this._lastEventsFetchedAt = new Date().getTime();
           this.checkEventCount()
         });
       } catch (e) {
@@ -441,7 +513,16 @@ export default {
     },
     onWindowFocus() {
       this.logger.log(1, "onWindowFocus", "enter > ");
-      this.loadEvents();
+      /**
+       * Refetching the complete event log on every focus was the most
+       * expensive full-ui re-render trigger: the response invalidated the
+       * session model and every tab. Only refetch when the data
+       * might actually be stale.
+       */
+      const now = new Date().getTime();
+      if (!this._lastEventsFetchedAt || now - this._lastEventsFetchedAt > EVENTS_REFETCH_TTL) {
+        this.loadEvents();
+      }
     },
     initFocusListener() {
       this.logger.log(1, "initFocusListener", "enter > ");
@@ -617,6 +698,12 @@ export default {
     $route() {
       this.logger.info("watch", "route");
       this.initRoute();
+    },
+    events () {
+      this.updateSessionModel();
+    },
+    testSettings () {
+      this.updateSessionModel();
     }
   },
   async mounted() {

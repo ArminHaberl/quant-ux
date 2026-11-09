@@ -30,7 +30,9 @@
             :test="test"
             :app="app"
             :events="events"
+            :sessionModel="sessionModel"
             :annotation="annotation"
+            :annotationVersion="annotationVersion"
             @change="onTaskChange"
           />
         </div>
@@ -45,7 +47,9 @@
             :test="test"
             :app="app"
             :events="events"
-            :annotation="annotation"/>
+            :sessionModel="sessionModel"
+            :annotation="annotation"
+            :annotationVersion="annotationVersion"/>
         </div>
 
     </section>
@@ -83,7 +87,7 @@ import HelpButton from "help/HelpButton";
 export default {
   name: "Test",
   mixins: [DojoWidget, Plan, Util],
-  props: ["app", "test", "annotation", "events", "pub", "hash"],
+  props: ["app", "test", "annotation", "events", "pub", "hash", "sessionModel", "annotationVersion"],
   data: function() {
     return {
       MIN_REQUIERED_USERS: 40,
@@ -157,9 +161,18 @@ export default {
     },
     show() {
       PerformanceMonitor.start('AnalyticsTab.show()')
-      /**
-       * remove all sessions that are invalid!
-       */
+      if (this.sessionModel) {
+        /**
+         * The header consuming this summary is currently hidden
+         * (v-if="false"), and the model has the factors already computed
+         * once for the whole app view. Keep the legacy computation as the
+         * fallback for views without a model.
+         */
+        const factors = this.sessionModel.getSummaryFactors(this.annotation)
+        this._setSummaryFromFactors(factors, this.app)
+        PerformanceMonitor.end('AnalyticsTab.show()')
+        return
+      }
       let events = this.filterEvents(this.events, this.annotation);
 
       /**
@@ -174,6 +187,30 @@ export default {
       this._addTestKPI(df, this.app);
 
       PerformanceMonitor.end('AnalyticsTab.show()')
+    },
+
+    _setSummaryFromFactors (factors, app) {
+      const summary = {};
+      summary.sessionCount = factors.sessionCount;
+      summary.sessionCountMean = Math.round(factors.actionsMean);
+      summary.sessionCountStd = Math.round(factors.actionsStd);
+      summary.sessionDurationMean = Math.round(factors.durationMean / 1000);
+      summary.sessionDurationStd = Math.round(factors.durationStd / 1000);
+      summary.sessionMeanUser = summary.sessionCount / summary.userCount;
+      summary.sessionPercentage = Math.min(summary.sessionCount / this.MIN_REQUIERED_USERS,1);
+
+      if (isNaN(summary.sessionDurationMean)) {
+        summary.sessionDurationMean = 0;
+        summary.sessionDurationStd = 0;
+      }
+
+      const screenCount = this.getObjectLength(app.screens);
+      let expRate = screenCount > 0 ? (factors.screensMean / screenCount) : 0;
+      if (isNaN(expRate) || factors.sessionCount === 0) {
+        expRate = 0;
+      }
+      summary.expRate = expRate;
+      this.summary = summary;
     },
 
     _addTestKPI (df, app) {
@@ -222,10 +259,18 @@ export default {
       this.logger.info("watch", "test >", v);
       this.test = v;
     },
+    sessionModel () {
+      this.show()
+    },
+    annotationVersion () {
+      this.show()
+    },
     events(v) {
       this.logger.info("watch", "events >", v);
       this.events = v;
-      this.show()
+      if (!this.sessionModel) {
+        this.show()
+      }
     }
   },
   async mounted() {

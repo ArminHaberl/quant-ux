@@ -12,6 +12,7 @@ import lang from "dojo/_base/lang";
 import touch from "dojo/touch";
 import Logger from "common/Logger";
 import DomBuilder from "common/DomBuilder";
+import { getPageWindow, getPagedRows, clampPagePointer } from "common/TableUtil";
 import {iconDOM} from "../page/QIconUtil";
 
 export default {
@@ -59,6 +60,11 @@ export default {
       this.logger.log(8, "setValue", "entry");
       this.rows = data;
       this.totalCount = data.length
+      /**
+       * New data can be shorter than the data before (delete a session,
+       * refetch). Keep the pointer on a valid page boundary.
+       */
+      this.itemPointer = clampPagePointer(this.itemPointer, this.totalCount, this.itemsPerPage);
       this.render();
       this.logger.log(10, "setValue", "exit");
     },
@@ -140,12 +146,24 @@ export default {
 
       var tbody = db.element("tbody").build(table);
 
-      var count = 0;
+      var count = this.itemPointer;
       var me = this;
-      this.rows.forEach(function(row) {
+      /**
+       * With paging enabled only the rows of the current page are rendered.
+       * Every row is a couple of <tr>/<td> nodes plus change listeners, so
+       * rendering all rows was the reason big session lists froze the tab.
+       */
+      this.getVisibleRows().forEach(function(row) {
         me.renderRow(row, tbody, count, db);
         count++;
       });
+    },
+
+    getVisibleRows: function() {
+      if (!this.hasPaging) {
+        return this.rows;
+      }
+      return getPagedRows(this.rows, this.itemPointer, this.itemsPerPage);
     },
 
     renderRow: function(row, tbody, j, db) {
@@ -236,22 +254,50 @@ export default {
 
         var ul = document.createElement("ul");
         div.appendChild(ul);
-        var steps = Math.ceil(this._totalCount / this.itemsPerPage);
-        for (var i = 0; i < steps; i++) {
-          let li = document.createElement("li");
-          ul.appendChild(li);
-          li.innerHTML = i + 1 + "";
-          if (i * this.itemsPerPage == this.itemPointer) {
+
+        /**
+         * The pages from the current window instead of one <li> per page:
+         * with 500 pages the bar would have rendered 500 nav nodes.
+         * Previous/next reuse the existing onBackward()/onForward().
+         */
+        var me = this;
+        var pages = getPageWindow(this.itemPointer, this.totalCount, this.itemsPerPage);
+
+        var prev = document.createElement("li");
+        if (this.itemPointer > 0) {
+          var prevLink = document.createElement("a");
+          prevLink.innerHTML = '<span class="mdi mdi-chevron-left"></span>';
+          prev.appendChild(prevLink);
+          prev.onclick = lang.hitch(this, "onBackward", null);
+        }
+        ul.appendChild(prev);
+
+        pages.forEach(function(page) {
+          var li = document.createElement("li");
+          var pageNumber = page * me.itemsPerPage;
+          li.innerHTML = page + 1 + "";
+          if (pageNumber == me.itemPointer) {
             css.add(li, "active");
           } else {
             var connection = on(
               li,
               "click",
-              lang.hitch(this, "setPos", i * this.itemsPerPage)
+              lang.hitch(me, "setPos", pageNumber)
             );
-            this.tempOwn(connection);
+            me.tempOwn(connection);
           }
+          ul.appendChild(li);
+        });
+
+        var next = document.createElement("li");
+        if (this.itemPointer + this.itemsPerPage < this.totalCount) {
+          var nextLink = document.createElement("a");
+          nextLink.innerHTML = '<span class="mdi mdi-chevron-right"></span>';
+          next.appendChild(nextLink);
+          next.onclick = lang.hitch(this, "onForward", null);
         }
+        ul.appendChild(next);
+
         this.domNode.appendChild(div);
       }
     },
@@ -261,7 +307,14 @@ export default {
 
       if (newValue != this.itemPointer) {
         this.itemPointer = newValue;
-        this._updateRows();
+        /**
+         * Only resort when a column was sorted. The unsorted walk used to
+         * compare undefined values (NaN), which re-sorted all rows for
+         * nothing on every page switch.
+         */
+        if (this.sortBy) {
+          this._updateRows();
+        }
         this._refresh();
       }
     },

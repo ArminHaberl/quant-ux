@@ -72,10 +72,17 @@ import * as Outlier from 'dash/Outlier'
 import PerformanceMonitor from 'core/PerformanceMonitor'
 import {iconDOM} from 'page/QIconUtil'
 
+/**
+ * Point ceiling for the session scatter. It keeps the DOM and the cluster
+ * work bounded for experiments with very many sessions: beyond that,
+ * sessions are stride sampled (see setValue()).
+ */
+const MAX_SCATTER_POINTS = 2000;
+
 export default {
     name: 'ScatterPlot',
     mixins: [_Color, Util],
-    props: ['test', 'app', 'events', 'annotation', 'pub', 'mode', 'yAxis', 'xAxis', 'clusterVars', 'clusterAlgo', 'clusterNorm'],
+    props: ['test', 'app', 'events', 'annotation', 'pub', 'mode', 'yAxis', 'xAxis', 'clusterVars', 'clusterAlgo', 'clusterNorm', 'sessionData'],
     data: function () {
         return {
             tasks: [],
@@ -121,21 +128,44 @@ export default {
             this._scatterPoints = {};
         },
 
-        setValue(test, app, events, annotations) {
+        setValue(test, app, events, annotations, sessionData) {
             this.logger.log(-1, "setValue", "enter");
             PerformanceMonitor.start('ScatterPlot.setValue()')
             this.annotations = annotations;
             this.model = app
 
             try {
-                const filteredEvents = this.filterEvents(events, annotations);
-                this.df = this.getActionEvents(new DataFrame(filteredEvents));      
-                this.df.sortBy("time");
-        
                 this.tasks = lang.clone(test.tasks).filter(task => task.flow.length >= 2);  
 
-                this.sessionDetails = this.analytics.getSessionDetails(this.df, this.tasks)     
-                this.sessionDetails = Outlier.addWeirdness(this.sessionDetails, this.df) 
+                if (sessionData) {
+                    /**
+                     * The shared SessionModel computed the session details
+                     * once per data load (one matcher pass instead of one
+                     * per plot, including the outlying weirdness and the
+                     * point cap for very large data).
+                     */
+                    this.sessionDetails = sessionData
+                } else {
+                    const filteredEvents = this.filterEvents(events, annotations);
+                    this.df = this.getActionEvents(new DataFrame(filteredEvents));      
+                    this.df.sortBy("time");
+            
+                    this.sessionDetails = this.analytics.getSessionDetails(this.df, this.tasks)     
+                    this.sessionDetails = Outlier.addWeirdness(this.sessionDetails, this.df) 
+                    /**
+                     * Beyond a few thousand points a session scatter does
+                     * not get more informative, but the DOM does: cap the
+                     * points with a stride sample. Cluster flags stay
+                     * index aligned with the sampled sessions (sampling
+                     * before cluster, never after).
+                     */
+                    if (this.sessionDetails.data.length > MAX_SCATTER_POINTS) {
+                        const stride = Math.ceil(this.sessionDetails.data.length / MAX_SCATTER_POINTS)
+                        this.sessionDetails = new DataFrame(this.sessionDetails.data.filter((row, i) => i % stride === 0))
+                        this.logger.log(1, "setValue", "Sampled scatter to " + this.sessionDetails.data.length);
+                    }
+                }
+
                 let data = this.analytics.convertSessionDetails(this.sessionDetails)
 
                 if (data.length < 200) {
@@ -379,24 +409,27 @@ export default {
             this.xAxis = v
             this.render()
         },
+        sessionData (v) {
+            this.setValue(this.test, this.app, this.events, this.annotation, v)
+        },
         clusterVars (v) {
             this.clusterVars = v
-            this.setValue(this.test, this.app, this.events, this.annotation)
+            this.setValue(this.test, this.app, this.events, this.annotation, this.sessionData)
         },
         clusterAlgo (v) {
             this.clusterAlgo = v
-            this.setValue(this.test, this.app, this.events, this.annotation)
+            this.setValue(this.test, this.app, this.events, this.annotation, this.sessionData)
         },
         clusterNorm (v) {
             this.clusterNorm = v
-            this.setValue(this.test, this.app, this.events, this.annotation)
+            this.setValue(this.test, this.app, this.events, this.annotation, this.sessionData)
         }
     },
     mounted() {        
         this.analytics = new Analytics();
         this.logger = new Logger("ScatterPlot");
         this.db = new DomBuilder();
-        this.setValue(this.test, this.app, this.events, this.annotation)
+        this.setValue(this.test, this.app, this.events, this.annotation, this.sessionData)
     }
 }
 </script>

@@ -71,19 +71,7 @@ export default {
             }       
         },
     },
-    watch: {
-        test(v) {
-            // for some reason not called
-            this.logger.info("watch", "test >", v);
-            this.test = v;
-        },
-        events(v) {
-            this.logger.info("watch", "events >", v);
-            this.events = v;
-            this.showBullet();
-            this.showSessions();
-        }
-    },
+    watch: {},
     async mounted() {
         this.logger = new Logger("CommentsTab");
         this.loadComments()

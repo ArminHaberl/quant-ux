@@ -63,7 +63,7 @@ import VideoPlayer from "views/apps/test/VideoPlayer";
 export default {
   name: "Test",
   mixins: [DojoWidget, Util],
-  props: ["app", "test", "annotation", "events"],
+  props: ["app", "test", "annotation", "events", "sessionModel"],
   data: function() {
     return {
       sessionID: "",
@@ -95,6 +95,15 @@ export default {
       return annotation;
     },
     currentEvents() {
+      if (this.sessionModel) {
+        /**
+         * The shared model has the events grouped by session once per
+         * data load. The previous lookup here sorted and regrouped the
+         * complete event log on every recompute of this computed
+         * whenever anything reactive in the replay tab changed.
+         */
+        return this.sessionModel.getSession(this.sessionID)
+      }
       if (this.events) {
         var df = new DataFrame(this.events);
         df.sortBy("time");

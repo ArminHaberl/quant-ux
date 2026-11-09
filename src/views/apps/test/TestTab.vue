@@ -145,7 +145,7 @@ import CheckBox from "common/CheckBox";
 export default {
   name: "Test",
   mixins: [DojoWidget, Plan, Util],
-  props: ["app", "test", "annotation", "events", "hash"],
+  props: ["app", "test", "annotation", "events", "hash", "sessionModel", "annotationVersion"],
   data: function() {
     return {
       sessionCount: 10,
@@ -355,15 +355,34 @@ export default {
     },
     showBullet() {
       this.logger.log(-2, "show", "entry >");
-      const df = new DataFrame(this.events);
-      this.sessionCount = df.unique("session");
+      if (this.sessionModel) {
+        this.sessionCount = this.sessionModel.sessionCount;
+      } else {
+        const df = new DataFrame(this.events);
+        this.sessionCount = df.unique("session");
+      }
       this.logger.log(0, "show", "exit", this.sessionCount);
     },
     showSessions() {
       this.logger.log(-1, "showSessions", "enter " + this.planGetTestCount());
-      this.cleanUpTempListener()
+      this.cleanUpTempListener();
+      const model = this.sessionModel;
+      if (model) {
+        /**
+         * One render per data change. The session model is the single
+         * source: events refetches build a new model reference, and only
+         * that change (plus an annotation version bump) may re-render.
+         * The events watcher no longer renders when a model exists,
+         * which removes the double table rebuild per refetch.
+         */
+        if (this._lastRenderedModel === model && this._lastRenderedAnnotationVersion === this.annotationVersion) {
+          return;
+        }
+        this._lastRenderedModel = model;
+        this._lastRenderedAnnotationVersion = this.annotationVersion;
+      }
       const app = this.app;
-      const list = this._getTestList(lang.clone(this.events), this.annotation, this.test);
+      const list = this._getSessionRows(model);
       const urlPrefix = this.urlPrefix;
 
       const tbl = this.$new(Table);
@@ -444,9 +463,34 @@ export default {
         }
       ]);
 
+      /**
+       * Real pagination: one <tr> per session used to be rendered for the
+       * complete data volume; with many sessions the DOM (5 columns x
+       * listeners) was several ten thousands nodes. The pagination bar
+       * logic already existed in the table, the row slicing was added
+       * with it (Table.renderBody + TableUtil).
+       */
+      tbl.setPaging(true);
+      tbl.setPagingSize(25);
+
       this.$refs.sessionCntr.innerHTML = ""
       tbl.placeAt(this.$refs.sessionCntr);
       tbl.setValue(list);
+    },
+
+    /**
+     * The rows come from the shared session model when the parent has
+     * built one; otherwise the legacy path recomputes them locally.
+     */
+    _getSessionRows (model) {
+      if (model) {
+        const rows = model.getRows(this.annotation);
+        for (let i = 0; i < rows.length; i++) {
+          rows[i].date = this.formatDate(rows[i].start);
+        }
+        return rows;
+      }
+      return this._getTestList(lang.clone(this.events), this.annotation, this.test);
     },
 
     onChangeSessionLabel (value, row) {
@@ -587,11 +631,31 @@ export default {
       this.logger.info("watch", "test >", v);
       this.test = v;
     },
-    events (v) {
-      this.logger.info("watch", "events >", v);
-      this.events = v;
+    /**
+     * With a session model, the model watcher (below) is the only render
+     * path: the events reference changes when the parent refetches, and
+     * the parent then also swaps in a new model. Rendering twice rebuilt
+     * the whole table per refetch.
+     */
+    events () {
+      if (!this.sessionModel) {
+        this.showBullet();
+        this.showSessions();
+      }
+    },
+    sessionModel () {
       this.showBullet();
       this.showSessions();
+    },
+    annotationVersion () {
+      /**
+       * An annotation change (valid / invalid, manual task success) can
+       * change the rows without a data reload. Used to stay stale until
+       * the next refetch.
+       */
+      if (this.sessionModel) {
+        this.showSessions();
+      }
     }
   },
   async mounted() {

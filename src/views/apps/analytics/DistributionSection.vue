@@ -45,7 +45,8 @@
                   :clusterNorm="clusterNorm"
                   :events="events"
                   :annotation="annotation"
-                  :test="test"/>
+                  :test="test"
+                  :sessionData="scatterSessionDetails"/>
 <!-- 
               <OutlierPlot 
                   v-if="viewMode === 'Outlier'" 
@@ -100,7 +101,7 @@
   export default {
       name: 'DistributionSection',
       mixins:[],
-      props: ['test', 'app', 'events', 'annotation', 'pub'],
+      props: ['test', 'app', 'events', 'annotation', 'pub', 'sessionModel', 'annotationVersion'],
       data: function () {
           return {
             xAxis: 'duration',
@@ -154,7 +155,21 @@
         // 'DistributionTable': import(/* webpackChunkName: "outlier" */'./DistributionTable.vue'),
       },
       computed: {
-       
+        /**
+         * The per session details for the scatter plot: the SessionModel
+         * computes them once per data load (including the outlying
+         * "weirdness"). The plot re-renders only for its axis / cluster
+         * toggles, not for every annotation change.
+         *
+         * annotationVersion is read on purpose: annotations can be edited
+         * in place, so a reference change alone would not recompute.
+         */
+        scatterSessionDetails () {
+          if (!this.sessionModel) {
+            return null
+          }
+          return this.sessionModel.getSessionDetails(this.annotation, { version: this.annotationVersion })
+        }
       },
       methods: {
         onChangeNorm (d) {

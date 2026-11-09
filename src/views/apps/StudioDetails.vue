@@ -82,7 +82,7 @@ import lang from 'dojo/_base/lang'
 export default {
     name: "StudioDetails",
     mixins: [Util],
-    props: ["app", "test", "user", "annotation", "events", "hash", "isLoaded"],
+    props: ["app", "test", "user", "annotation", "events", "hash", "isLoaded", "sessionModel", "annotationVersion"],
     data: function () {
         return {
             lastRenderSumamry: 0,
@@ -274,12 +274,64 @@ export default {
             }
             this.lastRenderSumamry = new Date().getTime()
             PerformanceMonitor.start('StudioDetails.setSummary()')
+            if (this.sessionModel) {
+                /**
+                 * The shared model computed the grouped action events and
+                 * ran the task matcher once per data load; here we only
+                 * aggregate the factors instead of recomputing the whole
+                 * pipeline for the right panel on every refetch.
+                 */
+                const factors = this.sessionModel.getSummaryFactors(this.annotation)
+                this._setSummaryFromFactors(factors, this.app)
+                PerformanceMonitor.end('StudioDetails.setSummary()')
+                return
+            }
             const events = this.filterEvents(this.events, this.annotation);
             const df = this.getActionEvents(new DataFrame(events));
             df.sortBy("time");
             this._addTestKPI(df, this.app);
 
             PerformanceMonitor.end('StudioDetails.setSummary()')
+        },
+
+        _setSummaryFromFactors (factors, app) {
+            const summary = {};
+            summary.sessionCount = factors.sessionCount;
+            if (factors.sessionCount === 0) {
+                summary.sessionDurationMean = '-'
+                summary.expRate = '-'
+            } else {
+                summary.sessionCountMean = Math.round(factors.actionsMean);
+                summary.sessionDurationMean = Math.round(factors.durationMean / 1000);
+                if (isNaN(summary.sessionDurationMean)) {
+                    summary.sessionDurationMean = 0;
+                }
+                summary.sessionDurationMeanLabel = 's'
+
+                const screenCount = this.getObjectLength(app.screens);
+                let expRate = screenCount > 0 ? (factors.screensMean / screenCount) : 0;
+                if (isNaN(expRate)) {
+                    expRate = 0;
+                }
+                summary.expRate = Math.round(expRate * 100)
+                summary.expRateLabel ='%';
+            }
+
+            const tasks = this.test.tasks;
+            if (tasks && tasks.length > 0) {
+                const taskSummaries = this.sessionModel.getTaskSummaries(this.annotation);
+                let sumSuccess = 0
+                taskSummaries.forEach(s => {
+                    sumSuccess += s.success
+                })
+
+                summary.taskSuccessMean = Math.round(100* (sumSuccess / taskSummaries.length))
+                summary.taskSuccessMeanLabel = '%'
+            } else {
+                summary.taskSuccessMean = '-'
+            }
+
+            this.summary = summary;
         },
 
         _addTestKPI(df, app) {
@@ -359,7 +411,18 @@ export default {
             this.logger.log(1, "watch", "events >", v);
             this.events = v;
             this.onChange()
-        }
+        },
+        sessionModel (v) {
+            this.logger.log(1, "watch", "sessionModel >", v);
+            this.onChange()
+        },
+        annotationVersion () {
+            /**
+             * Annotation edits (valid / invalid, manual task success)
+             * change the KPIs without refetching the events.
+             */
+            this.onChange()
+        },
     },
     async mounted() {
         this.logger = new Logger("StudioDetails");
