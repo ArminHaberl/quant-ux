@@ -4,6 +4,7 @@ import Grouping from '../common/Grouping'
 import PerformanceMonitor from '../core/PerformanceMonitor'
 import { sanitizeObjectKey } from '../common/SanitizeUtil'
 import { getContainerSuffix } from '../util/WidgetTreeUtil'
+import { isLifecycleState } from '../core/engines/ScriptStateReplay'
 
 
 export default class {
@@ -210,6 +211,25 @@ export default class {
 			});
 			sessionEvents.forEach(e => {
 				delete e.user
+				/**
+				 * A state that does not carry the widget's value must not become
+				 * the survey answer, because the read below takes the last
+				 * sample per widget. The ValidationError events are the trap:
+				 * they log the value that failed while the user was typing ('2'
+				 * for an age field that ended as '21'), and the widget's final
+				 * sample - the composite text state flushed on blur - is stamped
+				 * with the composite's start (= focus) time, so it sorts before
+				 * them (LogMixin copies widgetEvent.time into event.time).
+				 * Last-wins would end on the rejected partial value, while the
+				 * replay keeps the full one. ScriptStateReplay classifies these
+				 * state types as life cycle states for the same reason, so the
+				 * same test is applied here. The popup states (open, close, ...)
+				 * carry their options object as value and pollute the column the
+				 * same way.
+				 */
+				if (isLifecycleState(e.state)) {
+					return
+				}
 				if (app.widgets[e.widget]) {
 		
 					if (e.widget && e.state && widgetColumnNames[e.widget]) {
