@@ -74,7 +74,7 @@ export default {
             showTasksSucess: false,
             showTaskDetails: false,
             showVideo: false,
-            showId: false
+            showId: true
           }
         }
     },

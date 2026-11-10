@@ -300,6 +300,7 @@
     "videoTableScreens": "访问过屏幕",
     "videoTableEvents": "事件",
     "videoTableDate": "日期",
+    "videoTableSession": "会话",
     "videoTableStatusNotPayed": "阻塞",
     "videoTablePlanUpdateMsg": "查看全部视频更新您的计划"
 }

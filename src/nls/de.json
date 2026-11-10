@@ -251,6 +251,7 @@
     "videoTableScreens": "Visited Screens",
     "videoTableEvents": "Events",
     "videoTableDate": "Date",
+    "videoTableSession": "Sitzung",
     "videoTableStatusNotPayed": "Blocked",
     "videoTablePlanUpdateMsg": "To see all videos upgate your plan."
   }

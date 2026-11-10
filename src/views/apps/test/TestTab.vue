@@ -124,6 +124,14 @@
 <style lang="scss">
   @import '../../../style/components/upload.scss';
   @import '../../../style/components/layout.scss';
+
+  .MatcSessionID {
+    cursor: pointer;
+    white-space: nowrap;
+    &:hover {
+      text-decoration: underline;
+    }
+  }
 </style>
 <script>
 import Logger from "common/Logger"
@@ -145,6 +153,7 @@ import Dialog from "common/Dialog"
 import touch from "dojo/touch"
 import DomBuilder from "common/DomBuilder"
 import CheckBox from "common/CheckBox";
+import {shortSessionId} from '../../../utils/session'
 
 export default {
   name: "Test",
@@ -435,6 +444,27 @@ export default {
             td.innerHTML = row.duration + ' sec'
           }
         },
+        {
+          query: "session",
+          label: this.getNLS("videoTableSession"),
+          fct: (td, row) => {
+            /**
+             * The full id goes into the tooltip and the copy action; the
+             * cell shows the short form. The search still matches the
+             * full id because TableUtil.matchesSearch() stringifies the
+             * complete row.
+             */
+            const span = document.createElement('span')
+            css.add(span, 'MatcSessionID')
+            span.title = row.session
+            span.textContent = shortSessionId(row.session)
+            this.tempOwn(on(span, "click", (e) => {
+              e.stopPropagation()
+              this.copySessionId(row.session)
+            }))
+            td.appendChild(span)
+          }
+        },
         // {
         //   query: "size",
         //   label: this.getNLS("videoTableEvents")
@@ -493,6 +523,32 @@ export default {
       this.sessionSearch = value;
       if (this.sessionTable) {
         this.sessionTable.setSearch(value);
+      }
+    },
+
+    /**
+     * Click-to-copy for the session id column. The async clipboard API
+     * needs a secure context, which the http dev server (:8082) does not
+     * provide, hence the execCommand fallback.
+     */
+    async copySessionId (id) {
+      this.logger.log(-1, "copySessionId", "enter >", id);
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(id)
+        } else {
+          const ta = document.createElement('textarea')
+          ta.value = id
+          ta.style.position = 'fixed'
+          ta.style.opacity = '0'
+          document.body.appendChild(ta)
+          ta.select()
+          document.execCommand('copy')
+          document.body.removeChild(ta)
+        }
+        this.showSuccess('Session ID copied')
+      } catch (e) {
+        this.logger.warn("copySessionId", e);
       }
     },
 

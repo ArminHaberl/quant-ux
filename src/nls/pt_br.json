@@ -342,6 +342,7 @@
     "videoTableScreens": "Telas",
     "videoTableEvents": "Eventos",
     "videoTableDate": "Data",
+    "videoTableSession": "Sessão",
     "videoTableStatusNotPayed": "Bloqueado",
     "videoTablePlanUpdateMsg": "Para ver todos os vídeos, atualize o seu plano."
 }
