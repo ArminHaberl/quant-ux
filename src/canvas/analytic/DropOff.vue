@@ -12,7 +12,7 @@
   import DomBuilder from "common/DomBuilder";
   import DataFrame from "common/DataFrame";
   import Analytics from "dash/Analytics";
- 
+
   export default {
     name: "DropOff",
     mixins: [],
@@ -28,6 +28,30 @@
        * DropOff
        **********************************************************************/
   
+      /**
+       * The funnel matcher is O(events x tasks): the funnel summary is
+       * memoized per task in the canvas cache (which setEvents() clears),
+       * so toggling the dropoff mode or switching back to a task does not
+       * re-run the matcher. The annotation is part of the matcher input,
+       * so the memo is bound to the current annotation array, and
+       * setAnnotation() on the canvas resets it.
+       */
+      _getFunnel (task) {
+        if (!this.cache) {
+          this.cache = {}
+        }
+        if (!this.cache.funnel || this.cache.funnelAnnotation !== this.annotation) {
+          this.cache.funnel = {}
+          this.cache.funnelAnnotation = this.annotation
+        }
+        if (!this.cache.funnel[task.id]) {
+          const df = new DataFrame(this.events);
+          const analytics = new Analytics();
+          this.cache.funnel[task.id] = analytics.getFunnelSummary(df, task, this.annotation);
+        }
+        return this.cache.funnel[task.id]
+      },
+
       _render_global_DropOff() {
         this.logger.log(1, "_render_global_DropOff", "entry > ", this.analyticParams.task);
         this.setBW(true);
@@ -46,9 +70,7 @@
   
         const db = new DomBuilder()
   
-        const df = new DataFrame(this.events);
-        const analytics  = new Analytics();
-        const funnel = analytics.getFunnelSummary(df, task, this.annotation);
+        const funnel = this._getFunnel(task)
   
 
   
@@ -99,9 +121,7 @@
   
         const db = new DomBuilder()
   
-        const df = new DataFrame(this.events);
-        const analytics  = new Analytics();
-        const funnel = analytics.getFunnelSummary(df, task, this.annotation);
+        const funnel = this._getFunnel(task)
   
         const length = task.flow.length
         if (task.flow && task.flow.length > 1) {

@@ -1004,6 +1004,14 @@ export default {
     setAnnotation(a) {
       this.logger.log(2, "setAnnotation", "enter > # ");
       this.annotation = a;
+      /**
+       * The dropoff funnel matcher reads the annotations, so a new
+       * annotation array must not serve a cached funnel.
+       */
+      if (this.cache) {
+        delete this.cache.funnel
+        delete this.cache.funnelAnnotation
+      }
     },
 
     setTest(t) {
