@@ -944,6 +944,12 @@ export default {
 
 
     cleanUpAnalytics() {
+      /**
+       * The progressive renderers (the UserJourney lines) check this
+       * counter, so a batch that is still queued when the canvas
+       * re-renders does not draw into the cleaned container.
+       */
+      this._renderGen = (this._renderGen || 0) + 1
       this.cleanUpAnalyticLines()
 
       this.cleanUpNode(this.widgetContainer)

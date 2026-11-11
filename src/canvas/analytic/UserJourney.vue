@@ -193,8 +193,31 @@
         }
 
         const selectedSessions = this.analyticParams.sessions;
+        const ids = [];
         for (let sessionID in selectedSessions) {
           if (selectedSessions[sessionID] === true) {
+            ids.push(sessionID);
+          }
+        }
+
+        /**
+         * The lines render in batches: every selected session adds one
+         * DOM/SVG node per transition, and with thousands of sessions
+         * the single synchronous loop froze the tab. The batches produce
+         * the same lines, the tab just stays responsive between them.
+         * The generation counter makes a pending batch stop as soon as
+         * the canvas re-renders (cleanUpAnalytics() bumps it).
+         */
+        const gen = this._renderGen
+        const batchSize = 50
+        let i = 0
+        const renderBatch = () => {
+          if (gen !== this._renderGen) {
+            return
+          }
+          const end = Math.min(i + batchSize, ids.length)
+          for (; i < end; i++) {
+            const sessionID = ids[i];
             const session = sessions[sessionID];
             const matches = taskPerformance[sessionID];
             const outlierScore = outlierScores[sessionID]
@@ -204,11 +227,13 @@
               console.debug( "_render_global_UserJourney() > No session for ", sessionID   );
             }
           }
+          if (i < ids.length) {
+            setTimeout(renderBatch, 0)
+          } else if (this.analyticParams.outlier) {
+            this.showHint(`Found ${Object.values(outlierScores).filter(v => v ===1).length} outliers`)
+          }
         }
-
-        if (this.analyticParams.outlier) {
-          this.showHint(`Found ${Object.values(outlierScores).filter(v => v ===1).length} outliers`)
-        }
+        renderBatch()
       },
   
       
