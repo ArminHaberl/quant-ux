@@ -5,6 +5,7 @@ import PerformanceMonitor from '../core/PerformanceMonitor'
 import { sanitizeObjectKey } from '../common/SanitizeUtil'
 import { getContainerSuffix } from '../util/WidgetTreeUtil'
 import { isLifecycleState } from '../core/engines/ScriptStateReplay'
+import JSONPath from '../core/JSONPath'
 
 
 export default class {
@@ -71,6 +72,7 @@ export default class {
 		let widgetColumnNames = {}
 		let widgetTypes = {}
 		let widgetColums = {}
+		let surveyValuePaths = {}
 		Object.values(app.widgets).forEach(w => {
 
 			if (!widgetColumnNames[w.id]) {
@@ -129,6 +131,15 @@ export default class {
 							type: 'data',
 							id: w.id
 						})
+					}
+					/**
+					 * Remember the variable the widget's answer lives at, so the
+					 * ScriptEffect replay below can fill the column of a widget
+					 * whose screen was never rendered.
+					 */
+					const answerPath = this.getSurveyValueBinding(w)
+					if (answerPath) {
+						surveyValuePaths[w.id] = answerPath
 					}
 				}
 			}
@@ -230,8 +241,31 @@ export default class {
 				if (modelID === copy.widget) { return copy }
 				return Object.assign(copy, { widget: modelID })
 			});
+			/**
+			 * The view model the scripts of this session wrote into. Started
+			 * empty, because the session's initial values are not in the
+			 * event log; every dataChange carries the final value at its
+			 * path, so the replay reconstructs exactly what the scripts
+			 * wrote.
+			 */
+			let scriptData = {}
 			sessionEvents.forEach(e => {
 				delete e.user
+				/**
+				 * A script run carries its data binding diffs as one
+				 * ScriptEffect event. Replay them and fill the survey columns
+				 * from the view model, so an answer a script wrote for a
+				 * widget whose screen was never rendered is not lost: widget
+				 * state events (WidgetInit / WidgetChange) only exist for
+				 * widgets that were in the DOM. The script write competes by
+				 * event order with the direct states below, which is what the
+				 * simulator does with a rendered widget as well.
+				 */
+				if (e.state && e.state.type === 'script') {
+					this.applyScriptDataChanges(scriptData, e.state.value)
+					this.writeScriptSurveyAnswers(row, scriptData, surveyValuePaths, widgetTypes, widgetColumnNames, widgetColums)
+					return
+				}
 				/**
 				 * A state that does not carry the widget's value must not become
 				 * the survey answer, because the read below takes the last
@@ -252,48 +286,7 @@ export default class {
 					return
 				}
 				if (app.widgets[e.widget]) {
-		
-					if (e.widget && e.state && widgetColumnNames[e.widget]) {
-						const col = widgetColumnNames[e.widget]
-
-						if (e.state.type == 'chat' && e.state.value) {			
-							const values = e.state.value.filter(m => m.role ==='user').map(m => m.content).join('; ')		
-							row[col] =  values
-
-						} else if (widgetTypes[e.widget] === 'Rating') {
-							row[col] = (e.state.value * 1) + 1
-						} else {
-							let value = e.state.value
-							if (this.isObject(value)) {
-								value = Object.entries(value).map((e) => `${e[0]}: ${e[1]}`)
-							}
-							if (Array.isArray(value)) {
-								row[col] = value.join(', ')
-							} else {
-								row[col] = value					
-							}				
-							
-						}
-					} else {
-						if (e.state && e.state.type == 'chat') {
-							const chatCols = widgetColums[e.widget];
-							const values = e.state.value.filter(m => m.role ==='user').map(m => m.content)
-							
-							for (let i=0; i < chatCols.length; i++) {
-								row[chatCols[i]] = values[i]
-							}
-						
-
-							//row[col] = 
-
-						} else if (e.state && widgetColums[e.widget]) {
-							const keys = widgetColums[e.widget]
-							const value = e.state.value
-							keys.forEach(col => {
-								row[col] = value[col]
-							})
-						} 
-					}
+					this.writeSurveyAnswer(row, e.widget, e.state, widgetTypes, widgetColumnNames, widgetColums)
 				}
 			})
 
@@ -332,6 +325,133 @@ export default class {
 
 		PerformanceMonitor.end('Analytics.getSurveyAnswers()')
 		return result
+	}
+
+	/**
+	 * The variable a survey widget's answer lives at. The generic widget
+	 * binding is props.databinding.default — UIWidget.setDataBinding()
+	 * reacts to that key only, and the simulator's initDataBinding() reads
+	 * the same map on render. A script that mutates that variable therefore
+	 * writes the widget's answer, and the ScriptEffect event records it.
+	 */
+	getSurveyValueBinding (widget) {
+		if (widget && widget.props && widget.props.databinding) {
+			return widget.props.databinding.default
+		}
+		return null
+	}
+
+	/**
+	 * Replay one script run's data binding diffs onto the session's view
+	 * model. The ScriptEffect event is the only place a session records what
+	 * a script wrote, so it is the only way to fill the survey column of a
+	 * widget whose screen was never rendered.
+	 */
+	applyScriptDataChanges (scriptData, effect) {
+		if (!effect || !Array.isArray(effect.dataChanges)) {
+			return
+		}
+		effect.dataChanges.forEach(change => {
+			if (!change || !change.path) {
+				return
+			}
+			/**
+			 * A removal is the script deleting a variable. The live simulator
+			 * never pushes a deletion into a widget either: replaceDataBinding()
+			 * and initDataBinding() skip null and undefined, and a rendered
+			 * widget keeps showing its stale value, so the column keeps the
+			 * last written value as well.
+			 */
+			if (change.removed || change.value === undefined || change.value === null) {
+				return
+			}
+			/**
+			 * Clone before storing: the change's value object belongs to the
+			 * caller's event log, and getSurveyAnswers() promises not to
+			 * mutate the caller's events.
+			 */
+			JSONPath.set(scriptData, change.path, lang.clone(change.value))
+		})
+	}
+
+	/**
+	 * Fill the survey columns from the values the scripts of this session
+	 * wrote. Last write wins in event order, exactly like the direct state
+	 * branch: a later WidgetChange of the user overwrites an earlier script
+	 * value, and a later script value overwrites an earlier user answer,
+	 * which is what the simulator does with a rendered widget too.
+	 */
+	writeScriptSurveyAnswers (row, scriptData, surveyValuePaths, widgetTypes, widgetColumnNames, widgetColums) {
+		Object.keys(surveyValuePaths).forEach(widgetID => {
+			const value = JSONPath.get(scriptData, surveyValuePaths[widgetID])
+			if (value === undefined || value === null) {
+				return
+			}
+			const type = widgetTypes[widgetID]
+			/**
+			 * A script that writes a shape the widget would never carry must
+			 * not put undefined into the columns: Chat reads a transcript
+			 * array and RadioTable a selection object keyed by row name.
+			 */
+			if (type === 'Chat' && !Array.isArray(value)) {
+				return
+			}
+			if (type === 'RadioTable' && !this.isObject(value)) {
+				return
+			}
+			/**
+			 * The type only steers writeSurveyAnswer()'s chat branch; every
+			 * other shape goes through its generic value handling.
+			 */
+			const state = { type: type === 'Chat' ? 'chat' : 'text', value: lang.clone(value) }
+			this.writeSurveyAnswer(row, widgetID, state, widgetTypes, widgetColumnNames, widgetColums)
+		})
+	}
+
+	/**
+	 * Write one widget's answer into the session row. Shared by the direct
+	 * state branch and the ScriptEffect replay, so the two cannot drift on
+	 * how a value maps into the columns (chat transcript, rating index,
+	 * object and array formatting).
+	 */
+	writeSurveyAnswer (row, widgetID, state, widgetTypes, widgetColumnNames, widgetColums) {
+		if (widgetID && state && widgetColumnNames[widgetID]) {
+			const col = widgetColumnNames[widgetID]
+
+			if (state.type == 'chat' && state.value) {
+				const values = state.value.filter(m => m.role ==='user').map(m => m.content).join('; ')
+				row[col] =  values
+
+			} else if (widgetTypes[widgetID] === 'Rating') {
+				row[col] = (state.value * 1) + 1
+			} else {
+				let value = state.value
+				if (this.isObject(value)) {
+					value = Object.entries(value).map((e) => `${e[0]}: ${e[1]}`)
+				}
+				if (Array.isArray(value)) {
+					row[col] = value.join(', ')
+				} else {
+					row[col] = value
+				}
+			}
+		} else {
+			if (state && state.type == 'chat') {
+				const chatCols = widgetColums[widgetID];
+				const values = state.value.filter(m => m.role ==='user').map(m => m.content)
+
+				for (let i=0; i < chatCols.length; i++) {
+					row[chatCols[i]] = values[i]
+				}
+
+			} else if (state && widgetColums[widgetID]) {
+				const keys = widgetColums[widgetID]
+				const value = state.value
+				keys.forEach(col => {
+					row[col] = value[col]
+				})
+			}
+		}
 	}
 
 	isObject(obj) {	

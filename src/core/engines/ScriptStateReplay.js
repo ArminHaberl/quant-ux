@@ -47,6 +47,13 @@ import JSONPath from '../JSONPath'
  * - value: the ValidationError events. Several widgets ignore the type on
  *   replay (TextBox only understands text and typing) and the screen itself
  *   keeps showing the value that failed, so it must not evict that value.
+ * - script: the ScriptEffect events. Their value is the script's style and
+ *   prop deltas plus the data binding diffs of the view model, not a widget
+ *   value. Both replay implementations (buildEventStates below and
+ *   ReplayStateIndex) route them into applyScriptEffect before the widget
+ *   state handling ever sees them; classifying them here keeps the survey
+ *   analytics from stringifying the whole effect object into the survey
+ *   column of a Script widget that was mis-flagged as a survey element.
  */
 const lifecycleStateTypes = {
     'open': true,
@@ -54,7 +61,8 @@ const lifecycleStateTypes = {
     'close': true,
     'popupScroll': true,
     'hidden': true,
-    'value': true
+    'value': true,
+    'script': true
 }
 
 /**
