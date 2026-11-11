@@ -61,6 +61,7 @@ import SurveyTable from './SurveyTable'
 import SurveyDialog from './SurveyDialog'
 
 import { escapeCsv } from '../../../utils/csv';
+import { deepFreeze } from 'common/Freeze';
 
 export default {
     name: 'SurveySection',
@@ -139,7 +140,21 @@ export default {
         }
       },
       refreshTable () {
-        this.table = this.getTable()
+        const table = this.getTable()
+        /**
+         * The rows are a read-only result: they are only rendered,
+         * averaged and exported, and the table is rebuilt from scratch on
+         * every change. Freezing the parallel arrays and their row objects
+         * keeps the biggest per-tab derived structure (one row per
+         * session) out of Vue's observer. The column objects stay mutable
+         * on purpose: toggleColumn() writes col.hidden in place to show
+         * and hide columns reactively.
+         */
+        deepFreeze(table.rows)
+        deepFreeze(table.ids)
+        deepFreeze(table.labels)
+        deepFreeze(table.tasks)
+        this.table = table
         this.isLoaded = true
       },
       toggleColumn (col, selected) {
@@ -153,12 +168,17 @@ export default {
        downloadCVS () {
 
           const table = this.table
-          let csvContent = '#,' + table.cols.map(c => escapeCsv(c.label)).join(',') + "\n";
-          csvContent += table.rows.map((row, r) => {
-            return escapeCsv(r) + ',' + table.cols.map(c => escapeCsv(row[c.key])).join(',')
-          }).join("\n")
+          /**
+           * The rows go into the Blob as string parts: for experiments
+           * with many sessions, building one joined string roughly
+           * doubles the export's memory. The frozen table is only read.
+           */
+          const parts = ['#,' + table.cols.map(c => escapeCsv(c.label)).join(',') + "\n"];
+          table.rows.forEach((row, r) => {
+            parts.push(escapeCsv(r) + ',' + table.cols.map(c => escapeCsv(row[c.key])).join(',') + "\n")
+          })
 
-          const blob = new Blob([csvContent], {
+          const blob = new Blob(parts, {
             type: "text/csv;charset=utf-8;"
           });
           if (window.navigator.msSaveOrOpenBlob) {
@@ -205,6 +225,22 @@ export default {
     mounted () {
       this.logger = new Logger('SurveySection')
       this.refreshTable()
+    },
+    /**
+     * The keep-alive calls these hooks on the whole child tree, so the
+     * survey table is released whenever the Results tab deactivates and
+     * rebuilt on the next activation. The template reads table.rows, so
+     * the release must not re-render the deactivated component - Vue
+     * skips the render watcher while it is inactive, and activated()
+     * refills the table before the next render runs.
+     */
+    deactivated () {
+      this.table = null
+    },
+    activated () {
+      if (!this.table) {
+        this.refreshTable()
+      }
     }
 }
 </script>

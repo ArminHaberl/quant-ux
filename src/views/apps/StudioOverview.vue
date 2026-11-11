@@ -76,17 +76,21 @@
             With keep-alive a switch only deactivates / reactivates the
             cached instance. The key resets the cache when another app is
             opened (this component survives app navigation), and the LRU
-            max bounds the memory of the heatmap canvases / replay caches.
+            max of one evicts the previous app generation as soon as its
+            tab is visited again, so old tab instances and their derived
+            data do not pile up when switching between apps. The heavy
+            tabs additionally release their biggest buffers in
+            deactivated() and rebuild them on activation.
           -->
 
           <div>
-            <keep-alive :max="6">
+            <keep-alive :max="1">
               <StudioDesignTab v-if="tab === 'design' && appLoaded" :key="'design-' + appID" :app="app"
                 :isPublic="isPublic" @change="onChangeAppDescription" />
             </keep-alive>
           </div>
           <div>
-            <keep-alive :max="6">
+            <keep-alive :max="1">
               <TestTab :loading="loading" :app="app" :test="testSettings" :hash="hash" :annotation="sessionAnnotations"
                 :events="events" :sessionModel="sessionModel" :annotationVersion="annotationVersion"
                 @reloadEvents="reloadEvents" v-if="tab === 'test' && restLoaded" :key="'test-' + appID"
@@ -94,7 +98,7 @@
             </keep-alive>
           </div>
           <div>
-            <keep-alive :max="6">
+            <keep-alive :max="1">
               <AnalyticsTab :loading="loading" :app="app" :hash="hash" :test="testSettings" :annotation="sessionAnnotations"
                 :events="events" :sessionModel="sessionModel" :annotationVersion="annotationVersion"
                 v-if="tab === 'analyze' && restLoaded" :key="'analyze-' + appID" @change="onTestChange" />
@@ -102,14 +106,14 @@
           </div>
 
           <div>
-            <keep-alive :max="6">
+            <keep-alive :max="1">
               <HeatTab :loading="loading" :app="app" :test="testSettings" :annotation="sessionAnnotations" :events="events"
                 v-if="tab === 'heat' && restLoaded" :key="'heat-' + appID" />
             </keep-alive>
           </div>
 
           <div>
-            <keep-alive :max="6">
+            <keep-alive :max="1">
               <VideoTab :loading="loading" :app="app" :test="testSettings" :annotation="sessionAnnotations" :events="events"
                 :sessionModel="sessionModel" v-if="tab === 'video' && restLoaded" :key="'video-' + appID"
                 @change="onAnnotationChange" />
@@ -117,14 +121,14 @@
           </div>
 
           <div>
-            <keep-alive :max="6">
+            <keep-alive :max="1">
               <SettingsTab :loading="loading" :app="app" :user="user" :invitations="invitations"
                 v-if="tab === 'settings' && restLoaded" :key="'settings-' + appID" @change="onSettingsChange" />
             </keep-alive>
           </div>
 
           <div>
-            <keep-alive :max="6">
+            <keep-alive :max="1">
               <CommentsTab :loading="loading" :app="app" :user="user" :invitations="invitations"
                 v-if="tab === 'comments' && restLoaded" :key="'comments-' + appID" @change="onSettingsChange" />
             </keep-alive>
@@ -157,6 +161,7 @@ import on from "dojo/on";
 import lang from "dojo/_base/lang";
 import touch from "dojo/touch";
 import DomBuilder from "common/DomBuilder";
+import { freezeItems } from "common/Freeze";
 import * as UIUtil from '../../util/UIUtil'
 
 import QIcon from "page/QIcon";
@@ -258,6 +263,17 @@ export default {
     scrollTop() {
       window.scrollTo(0, 0);
     },
+    _logHeap(prefix) {
+      /**
+       * Dev-only heap probe (Chrome only): makes the effect of freezing
+       * the event data and of the keep-alive bounds measurable while
+       * hunting the out-of-memory errors with large experiments.
+       */
+      const memory = window.performance && window.performance.memory
+      if (memory) {
+        this.logger.log(1, "heap", prefix + " " + Math.round(memory.usedJSHeapSize / 1048576) + " MB")
+      }
+    },
     reloadEvents() {
       this.logger.log(1, "reloadEvents", "enter > ");
       this.loadEvents();
@@ -270,9 +286,8 @@ export default {
       this.testSettings = testSettings;
     },
     onDownload () {
-      this.logger.log(-1, "onDownload", "enter > ", this.events);
+      this.logger.log(-1, "onDownload", "enter > ", this.events.length);
 
-      const events = structuredClone(this.events)
       const id2Name = {}
       Object.values(this.app.screens).forEach(s => {
         id2Name[s.id] = s.name
@@ -280,21 +295,35 @@ export default {
       Object.values(this.app.widgets).forEach(w => {
         id2Name[w.id] = w.name
       })
-      events.forEach(e => {
-          if (e.widget) {
-            const id = e.widget.split("@")[0]
-            e.widgetName = id2Name[id]
-          }
-          if (e.screen) {
-            e.screenName = id2Name[e.screen]
-          }
-          delete e.user
-          delete e.id
-          delete e._id
+      /**
+       * The events are frozen read-only inputs, so the export builds a
+       * shallow projection per event (the nested objects stay shared, they
+       * are only read) and stringifies it right away: the parts go
+       * straight into the Blob, which never materializes one giant
+       * concatenated string. The old structuredClone plus pretty-printed
+       * stringify peaked at roughly four times the data and was the
+       * reliable out-of-memory trigger of this button.
+       */
+      const parts = ["["]
+      this.events.forEach((e, i) => {
+        const copy = Object.assign({}, e)
+        if (copy.widget) {
+          copy.widgetName = id2Name[copy.widget.split("@")[0]]
+        }
+        if (copy.screen) {
+          copy.screenName = id2Name[copy.screen]
+        }
+        delete copy.user
+        delete copy.id
+        delete copy._id
+        if (i > 0) {
+          parts.push(",")
+        }
+        parts.push(JSON.stringify(copy))
       })
-    
-      const contnet = JSON.stringify(events, null, 2)
-      const blob = new Blob([contnet], {
+      parts.push("]")
+
+      const blob = new Blob(parts, {
         type: "application/json"
       });
       if (window.navigator.msSaveOrOpenBlob) {
@@ -318,23 +347,34 @@ export default {
         Object.values(this.app.widgets).forEach(w => {
           id2Name[w.id] = w.name
         })
-        const events = []
+        /**
+         * Same streaming export as onDownload(): the records go into the
+         * Blob as string parts instead of one giant pretty-printed string.
+         */
+        const parts = ["["]
+        let first = true
         for (const record of mouse) {
             const { x, y, c, t, session, screen} = record
             const screenName = id2Name[screen]
             for (let i = 0; i < x.length; i++) {
-              events.push({
+              const e = {
                 x: x[i],
                 y: y[i],
                 c: c[i],
                 t: t[i],
                 session: session,
                 screen: screenName
-              })
+              }
+              if (!first) {
+                parts.push(",")
+              }
+              first = false
+              parts.push(JSON.stringify(e))
             }
         }
-        const contnet = JSON.stringify(events, null, 2)
-        const blob = new Blob([contnet], {
+        parts.push("]")
+
+        const blob = new Blob(parts, {
           type: "application/json"
         });
         if (window.navigator.msSaveOrOpenBlob) {
@@ -416,11 +456,23 @@ export default {
       let id = this.$route.params.id;
       try {
         this.modelService.findEvents(id).then(events => {
+          /**
+           * The event objects are read-only after the load: every consumer
+           * (SessionModel, the analytics, the survey table) works on copies
+           * and the deprecated event rewriter runs only in the design view,
+           * which loads its own events. Freezing them keeps the complete
+           * log out of Vue's observer, which would otherwise install an
+           * observer, Dep and getter/setter pair per event property and
+           * re-walk everything on each assignment. The array itself stays
+           * unfrozen: DataFrame.sortBy() sorts the wrapped array in place.
+           */
+          freezeItems(events)
           this.events = events;
           this.loading = false
           this.appLoaded = true;
           this.logger.log(1, "loadEvents", "Found " + events.length + " events");
           this._lastEventsFetchedAt = new Date().getTime();
+          this._logHeap("after event load (" + events.length + " events)")
           this.checkEventCount()
         });
       } catch (e) {
@@ -510,6 +562,7 @@ export default {
         this.$forceUpdate()
       }
       this.scrollTop();
+      this._logHeap("tab " + this.tab)
     },
     onWindowFocus() {
       this.logger.log(1, "onWindowFocus", "enter > ");

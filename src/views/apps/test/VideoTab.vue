@@ -136,11 +136,16 @@ export default {
       const sessionID = this.sessionID;
       this.eventsWithAnnimations = [];
       this.mouseEvents = [];
+      this._loading = true
       Promise.all([
         this.modelService.findEventsBySession(this.app.id, sessionID),
         this.modelService.findMouseBySession(this.app.id, sessionID)
       ]).then(values => {
+        this._loading = false
         if (this.sessionID === sessionID) this.onLoaded(values[0], values[1]);
+      }).catch(error => {
+        this._loading = false
+        this.logger.error("load", error)
       });
     },
     onChangeSessionLabel () {
@@ -198,6 +203,22 @@ export default {
     this.logger.info("mounted", "exit");
     this.modelService = Services.getModelService(this.$route);
     this.load();
+  },
+  /**
+   * The replay buffers of the last selected session (its complete event
+   * and mouse log) are the biggest per-tab memory. The keep-alive cache
+   * releases them on deactivate and refetches them on the next
+   * activation: mounted() and the $route watcher are the only other load()
+   * callers, so a reactivation would otherwise show an empty replay.
+   */
+  deactivated() {
+    this.eventsWithAnnimations = [];
+    this.mouseEvents = [];
+  },
+  activated() {
+    if (this.sessionID && this.eventsWithAnnimations.length === 0 && !this._loading) {
+      this.load();
+    }
   }
 };
 </script>

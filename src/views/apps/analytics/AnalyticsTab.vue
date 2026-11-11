@@ -125,25 +125,29 @@ export default {
       try {
         let events = this.filterEvents(this.events, this.annotation);
         var actionEvents = this.getActionEvents(new DataFrame(events));
-        let csv = "Session,User,Screen,Widget,EventType,X,Y,Time\n";
         let screenSize = this.app.screenSize;
-        csv += actionEvents.data
-          .map(event => {
-            let screen = this.app.screens[event.screen]
-              ? this.app.screens[event.screen].name
-              : event.screen;
-            let widget = this.app.widgets[event.widget]
-              ? this.app.widgets[event.widget].name
-              : event.widget;
-            let x = event.x >= 0 ? Math.round(event.x * screenSize.w) : -1;
-            let y = event.y >= 0 ? Math.round(event.y * screenSize.h) : -1;
-            return (
-              event.session + "," +event.user + "," + screen + "," + widget + "," + event.type + "," + x + "," + y + "," + event.time
-            );
-          })
-          .join("\n");
+        /**
+         * The rows go into the Blob as string parts: for a large event
+         * log, building one joined string roughly doubles the export's
+         * memory and was an out-of-memory trigger. The events themselves
+         * are only read.
+         */
+        const parts = ["Session,User,Screen,Widget,EventType,X,Y,Time\n"];
+        actionEvents.data.forEach(event => {
+          let screen = this.app.screens[event.screen]
+            ? this.app.screens[event.screen].name
+            : event.screen;
+          let widget = this.app.widgets[event.widget]
+            ? this.app.widgets[event.widget].name
+            : event.widget;
+          let x = event.x >= 0 ? Math.round(event.x * screenSize.w) : -1;
+          let y = event.y >= 0 ? Math.round(event.y * screenSize.h) : -1;
+          parts.push(
+            event.session + "," + event.user + "," + screen + "," + widget + "," + event.type + "," + x + "," + y + "," + event.time + "\n"
+          );
+        });
 
-        var blob = new Blob([csv], {
+        var blob = new Blob(parts, {
           type: "text/csv;charset=utf-8;"
         });
         if (window.navigator.msSaveOrOpenBlob) {

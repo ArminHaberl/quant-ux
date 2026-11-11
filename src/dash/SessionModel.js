@@ -2,6 +2,7 @@ import Analytics from './Analytics'
 import DataFrame from '../common/DataFrame'
 import PerformanceMonitor from '../core/PerformanceMonitor'
 import * as Outlier from './Outlier'
+import { freezeItems } from '../common/Freeze'
 
 /**
  * SessionModel builds, once per data load, everything the admin UI
@@ -81,6 +82,17 @@ export default class SessionModel {
          */
         this.tasksPerformance = this.analytics.getTaskPerformance(new DataFrame(this.actionEvents), this._tasks)
         this.startPerformance = this.analytics.getTaskStarts(new DataFrame(this.actionEvents), this._tasks)
+        /**
+         * The pre-computed rows are read-only: getRows() and the annotation
+         * merge work on copies and every consumer only reads them. Freezing
+         * the row objects keeps them out of the observer of every tab that
+         * stores them in reactive data (Vue skips frozen objects entirely).
+         * The container arrays stay unfrozen on purpose: DataFrame.sortBy()
+         * reorders the wrapped array in place.
+         */
+        freezeItems(this.sessions)
+        freezeItems(this.tasksPerformance.data)
+        freezeItems(this.startPerformance.data)
         PerformanceMonitor.end('SessionModel.build()', 1)
     }
 

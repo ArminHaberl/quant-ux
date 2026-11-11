@@ -564,7 +564,14 @@ export default {
         }
         return rows;
       }
-      return this._getTestList(lang.clone(this.events), this.annotation, this.test);
+      /**
+       * The deep clone of the complete event log is gone: the events are
+       * frozen read-only inputs and _getTestList sorts the caller's array
+       * in place, which the other consumers tolerate too (SessionModel
+       * sorts its own shallow copy). The clone doubled the memory of the
+       * whole log and was an out-of-memory trigger on the legacy path.
+       */
+      return this._getTestList(this.events, this.annotation, this.test);
     },
 
     onChangeSessionLabel (value, row) {
