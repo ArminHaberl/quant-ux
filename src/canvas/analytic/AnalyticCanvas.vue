@@ -69,6 +69,8 @@ import KeyBoard from "canvas/KeyBoard";
 import Resize from "canvas/Resize";
 import Replicate from "canvas/Replicate";
 import Analytics from "dash/Analytics";
+import PerformanceMonitor from "core/PerformanceMonitor";
+import { groupEventsByScreen } from "canvas/analytic/HeatDataUtil";
 import FastDomUtil from "core/FastDomUtil";
 import * as d3 from "d3";
 import _Color from 'common/_Color'
@@ -239,6 +241,7 @@ export default {
       this.logger.log(0, "setMouseData", "enter > " + data.length);
       // this.mouseData = this.computeMouseDistribution(data, this.sourceModel);
       this.mouseData = data;
+      this._heatPrep = null;
       if (data.length == 0) {
         this.showError("No Mouse data was recorded");
       }
@@ -606,6 +609,18 @@ export default {
 
       const screenGrouping = this.df.groupBy("screen");
 
+      /**
+       * The preparation runs once over the whole log instead of once per
+       * screen: the click events are filtered and grouped by their event
+       * screen id, the mouse distribution is computed for all screens at
+       * once (it groups internally), and the view counts are counted
+       * once. Before, every screen re-filtered the complete event log,
+       * which was O(screens x events) and froze the tab on experiments
+       * with many sessions.
+       */
+      PerformanceMonitor.start('AnalyticCanvas._renderHeatMap()')
+      const prep = this._getHeatPrep();
+
       this.heatmapDivs = {};
       for (var id in this.sourceModel.screens) {
         const screen = this.sourceModel.screens[id];
@@ -627,7 +642,7 @@ export default {
           const canvas = this.db.canvas(screen.w, screen.h).build(cntr);
           const ctx = canvas.getContext("2d");
 
-          this["_render_" + this.analyticMode](screenEvents, screen, ctx, div);
+          this["_render_" + this.analyticMode](screenEvents, screen, ctx, div, prep);
 
           if (this.hasSelect()) {
             this.tempOwn(on(div, touch.press, lang.hitch(this, "onScreenDndClick", screen.id, div, null)));
@@ -650,60 +665,102 @@ export default {
         this.hideWidgetDND = false;
       }
 
+      PerformanceMonitor.end('AnalyticCanvas._renderHeatMap()')
+
       if (this["_render_global_" + this.analyticMode]) {
         this["_render_global_" + this.analyticMode]();
       }
     },
 
-    _render_HeatmapMouse(screenEvents, screen, ctx) {
-      this.logger.log(0, "_render_HeatmapMouse", "entry > " + screen.name);
-      /**
-       * FIXME: we could make this fastter by caching some stuff,
-       * or at least soft the events by screen
-       */
-      let mouseData = this.mouseData.filter((m) => m.screen === screen.id);
-      mouseData = this._filterSelectedSessions(mouseData)
-      let data = this.computeMouseDistribution(mouseData, this.sourceModel);
-      if (data[screen.id]) {
-        let d = data[screen.id];
-        this.draw(ctx, d.values, d.max, screen.w, screen.h);
+    /**
+     * The whole-log preparation of the heatmap render, cached per data
+     * load and mode: switching modes or parameters re-runs only the
+     * draws, not the scans. The key holds the identities of the inputs
+     * (the events and mouse arrays are replaced on load, the params
+     * object per toolbar change), and setEvents()/setMouseData() clear
+     * the memo as well.
+     */
+    _getHeatPrep() {
+      const key = [this.analyticMode, this.events, this.mouseData, this.analyticParams];
+      const cached = this._heatPrep;
+      if (cached &&
+        cached.key[0] === key[0] &&
+        cached.key[1] === key[1] &&
+        cached.key[2] === key[2] &&
+        cached.key[3] === key[3]) {
+        return cached.data
       }
+
+      const data = {};
+      if (this.analyticMode === "HeatmapClick") {
+        const selectedEvents = this._filterSelectedSessions(this.events)
+        const actionEvents = this._getClickActionEvents(selectedEvents)
+        data.clickByScreen = groupEventsByScreen(actionEvents, e => this.getEventScreenId(e));
+      } else if (this.analyticMode === "HeatmapMouse") {
+        /**
+         * computeMouseDistribution() groups the mouse records by screen
+         * internally and returns one distribution per screen, so it is
+         * called once with the whole mouse log.
+         */
+        data.mouseDistribution = this.computeMouseDistribution(
+          this._filterSelectedSessions(this.mouseData || []),
+          this.sourceModel
+        );
+      } else if (this.analyticMode === "HeatmapViews") {
+        data.screenViews = this.getScreenViews();
+        data.overlayViews = this.getOverlayViews();
+      }
+
+      this._heatPrep = { key: key, data: data };
+      return data
     },
 
-    _render_HeatmapClick(screenEvents, screen, ctx, div) {
-      this.logger.log(2, "_render_HeatmapClick", "entry > ");
-
-      const events = this._filterSelectedSessions(this.events)
-
-      const df = new DataFrame(events)
+    _getClickActionEvents(selectedEvents) {
+      const df = new DataFrame(selectedEvents)
       var numberOfClicks = -1;
       if (this.analyticParams) {
         numberOfClicks = this.analyticParams.numberOfClicks;
       }
 
       if (numberOfClicks === "screenClicks") {
-
-        let screenClicks = this.getScreenClicksOnBackground(df);
-        screenClicks = screenClicks.as_array();
-        this._render_pixel_screen_heatmap(screenClicks, screen, ctx, div);
-
-      } else if (numberOfClicks === "missedClicks") {
-
-        let missedClicks = this.getMissedClicks(df);
-        this._render_pixel_screen_heatmap(missedClicks, screen, ctx, div);
-
-      } else if (numberOfClicks > 0) {
-
-        let firstNEvents = this.getFirstNClicksData(events, numberOfClicks);
-        this._render_pixel_screen_heatmap(firstNEvents, screen, ctx, div);
-
-      } else {
-
-        let filtered = this.getClickEvents(new DataFrame(events));
-        let actionEvents = filtered.as_array();
-        this._render_pixel_screen_heatmap(actionEvents, screen, ctx, div);
-
+        return this.getScreenClicksOnBackground(df).as_array();
       }
+      if (numberOfClicks === "missedClicks") {
+        return this.getMissedClicks(df);
+      }
+      if (numberOfClicks > 0) {
+        return this.getFirstNClicksData(selectedEvents, numberOfClicks);
+      }
+      return this.getClickEvents(df).as_array();
+    },
+
+    _render_HeatmapMouse(screenEvents, screen, ctx, prep) {
+      this.logger.log(0, "_render_HeatmapMouse", "entry > " + screen.name);
+      /**
+       * The distribution is computed once for all screens in
+       * _getHeatPrep(): computeMouseDistribution() groups by screen
+       * internally, so calling it per screen recomputed every screen's
+       * distribution once per screen (including the time sort over all
+       * mouse points).
+       */
+      const d = prep.mouseDistribution[screen.id];
+      if (d) {
+        this.draw(ctx, d.values, d.max, screen.w, screen.h);
+      }
+    },
+
+    _render_HeatmapClick(screenEvents, screen, ctx, div, prep) {
+      this.logger.log(2, "_render_HeatmapClick", "entry > ");
+
+      /**
+       * The click events for the active sub mode were already filtered
+       * and grouped once in _getHeatPrep(): every screen used to
+       * re-filter the complete event log here. The grouping goes through
+       * getEventScreenId(), so overlay and container children land under
+       * the id the model knows.
+       */
+      const actionEvents = prep.clickByScreen[screen.id] || [];
+      this._render_pixel_screen_heatmap(actionEvents, screen, ctx, div);
     },
 
     _filterSelectedSessions(events) {
@@ -722,15 +779,12 @@ export default {
         return
       }
       try {
-        const events = [];
-        for (let i = 0; i < actionEvents.length; i++) {
-          const e = actionEvents[i];
-          const screenID = this.getEventScreenId(e);
-          if (screenID == screen.id) {
-            events.push(e);
-          }
-        }
-        const dist = this.computeClickDistribution(events, screen.w, screen.h);
+        /**
+         * The caller passes the events of this screen already (grouped
+         * once by event screen id in _getHeatPrep), so there is no whole
+         * log filter per screen anymore.
+         */
+        const dist = this.computeClickDistribution(actionEvents, screen.w, screen.h);
         this.draw(ctx, dist.values, dist.max, screen.w, screen.h);
       } catch (err) {
         this.logger.error("_render_pixel_screen_heatmap", "Error > " + screen.name);
@@ -760,32 +814,24 @@ export default {
       this.drawSections(dist, ctx, screen.h, screen.w);
     },
 
-    _render_HeatmapViews(screenEvents, screen, ctx) {
+    _render_HeatmapViews(screenEvents, screen, ctx, prep) {
       this.logger.log(2, "HeatmapViews", "entry > ");
 
-      if (screen.style.overlay) {
-        let screenViews = this.getOverlayViews();
-        let count = screenViews.counts[screen.id];
-        if (!count) {
-          count = 0;
-        }
-
-        ctx.globalAlpha = 0.4;
-        let color = this.mixColor(count / screenViews.total);
-        ctx.fillStyle = color;
-        ctx.fillRect(0, 0, screen.w, screen.h);
-      } else {
-        let screenViews = this.getScreenViews();
-        let count = screenViews.counts[screen.id];
-        if (!count) {
-          count = 0;
-        }
-
-        ctx.globalAlpha = 0.4;
-        let color = this.mixColor(count / screenViews.total);
-        ctx.fillStyle = color;
-        ctx.fillRect(0, 0, screen.w, screen.h);
+      /**
+       * The view counts are computed once for all screens in
+       * _getHeatPrep(): counting the ScreenLoaded events was done per
+       * screen before.
+       */
+      let views = screen.style.overlay ? prep.overlayViews : prep.screenViews;
+      let count = views.counts[screen.id];
+      if (!count) {
+        count = 0;
       }
+
+      ctx.globalAlpha = 0.4;
+      let color = this.mixColor(count / views.total);
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, screen.w, screen.h);
     },
 
     _render_HeatmapDwelTime(screenEvents, screen, ctx) {
@@ -947,6 +993,7 @@ export default {
     setEvents(events) {
       this.logger.log(-1, "setEvents", "enter > # " + events.length);
       this.cache = {};
+      this._heatPrep = null;
       var analytics = new Analytics();
       this.events = analytics.nornalizeContainerChildEvents(events);
       this.df = new DataFrame(events);
