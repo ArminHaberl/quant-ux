@@ -245,17 +245,25 @@ export default {
     },
     loadEvents() {
       let id = this.$route.params.id;
-      try {
-        this.modelService.findEvents(id).then(events => {
+      this.modelService
+        .findEvents(id)
+        .then(events => {
           this.events = events;
           this.loading = false
           this.logger.log(-1, "loadEvents", "Found " + events.length + " events");
           this.checkEventCount()
-        });
-      } catch (e) {
-          this.logger.error("loadEvents", "Some error");
+        })
+        .catch(e => {
+          /**
+           * See StudioOverview: a rejection never reached the old try/catch,
+           * and loading was only cleared on success, so the tab kept
+           * spinning after a failed load.
+           */
+          this.loading = false
+          this.logger.error("loadEvents", "Could not load events");
           this.logger.sendError(e);
-      }
+          this.$root.$emit("Error", "Could not load the test data");
+        });
     },
     async checkEventCount () {
       if (this.isPublic) {

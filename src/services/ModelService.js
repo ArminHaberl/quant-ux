@@ -135,8 +135,32 @@ export class ModelService extends AbstractService{
         return this._post(`/rest/invitation/${id}/${hash}/events.json`, event)
     }
 
+    /**
+     * The complete event log is read over the streaming endpoint. The plain
+     * findBy() path makes the backend materialise the result three times: a
+     * List<JsonObject>, a JsonArray and one pretty printed String that
+     * response().end() encodes a fourth time. For the bigger studies that is
+     * ~230 MB of JSON and it blows the 1.9 GB JVM heap with an
+     * OutOfMemoryError, which leaves the request unanswered forever. With
+     * batch=true the server pumps document by document (204 MB for
+     * Final_Experiment in 37s, flat memory).
+     *
+     * MongoResultPump skips MongoREST.cleanJson(), so the documents only
+     * carry the mongo _id. The rest of the app talks about event.id - e.g.
+     * TestTab passes a SessionStart event to updateEvent() - so promote it
+     * here, once, before the callers freeze the objects.
+     */
     findEvents (id) {
-        return this._get(`/rest/events/${id}.json?exclude=Animation`)
+        return this.findEventsBatch(id).then(events => {
+            if (Array.isArray(events)) {
+                for (let i = 0; i < events.length; i++) {
+                    if (!events[i].id) {
+                        events[i].id = events[i]._id
+                    }
+                }
+            }
+            return events
+        })
     }
 
     findEventsBatch (id) {

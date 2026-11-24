@@ -183,9 +183,11 @@ import Share from "page/Share";
 /**
  * Refetch no more than this after every window focus. The focus listener
  * used to re-download the complete event log and invalidate every tab on
- * every focus loss/regain.
+ * every focus loss/regain. Five minutes, because a single load of a big
+ * study already takes about one, and a refetch is a complete ~200 MB
+ * download, not a cheap revalidation.
  */
-const EVENTS_REFETCH_TTL = 60 * 1000;
+const EVENTS_REFETCH_TTL = 5 * 60 * 1000;
 
 export default {
   name: "Overview",
@@ -453,9 +455,28 @@ export default {
 
     },
     loadEvents() {
+      /**
+       * Only one download at a time. A big study is ~200 MB of JSON and the
+       * backend buffers the complete response in its heap whenever the
+       * client falls behind, so two overlapping loads can take the server
+       * down. onWindowFocus(), the reload button and the initial load all
+       * come through here.
+       */
+      if (this._loadingEvents) {
+        return
+      }
       let id = this.$route.params.id;
-      try {
-        this.modelService.findEvents(id).then(events => {
+      this._loadingEvents = true
+      /**
+       * Stamped on the attempt, not on the success. A load takes longer than
+       * EVENTS_REFETCH_TTL for the big studies, so waiting for the response
+       * left the timestamp stale and every focus event started yet another
+       * complete download.
+       */
+      this._lastEventsFetchedAt = new Date().getTime()
+      this.modelService
+        .findEvents(id)
+        .then(events => {
           /**
            * The event objects are read-only after the load: every consumer
            * (SessionModel, the analytics, the survey table) works on copies
@@ -470,15 +491,23 @@ export default {
           this.events = events;
           this.loading = false
           this.appLoaded = true;
+          this._loadingEvents = false
           this.logger.log(1, "loadEvents", "Found " + events.length + " events");
-          this._lastEventsFetchedAt = new Date().getTime();
           this._logHeap("after event load (" + events.length + " events)")
           this.checkEventCount()
+        })
+        .catch(e => {
+          /**
+           * The old try/catch could never see the rejection: the request is
+           * asynchronous, and loading is only reset in the success path, so
+           * a failed load left the test tab spinning forever with no hint.
+           */
+          this.loading = false
+          this._loadingEvents = false
+          this.logger.error("loadEvents", "Could not load events");
+          this.logger.sendError(e);
+          this.$root.$emit("Error", "Could not load the test data");
         });
-      } catch (e) {
-        this.logger.error("loadEvents", "Some error");
-        this.logger.sendError(e);
-      }
     },
     async checkEventCount() {
       if (this.isPublic) {
@@ -570,8 +599,11 @@ export default {
        * Refetching the complete event log on every focus was the most
        * expensive full-ui re-render trigger: the response invalidated the
        * session model and every tab. Only refetch when the data
-       * might actually be stale.
+       * might actually be stale, and never while a load is in flight.
        */
+      if (this._loadingEvents) {
+        return
+      }
       const now = new Date().getTime();
       if (!this._lastEventsFetchedAt || now - this._lastEventsFetchedAt > EVENTS_REFETCH_TTL) {
         this.loadEvents();
