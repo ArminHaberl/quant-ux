@@ -1,10 +1,10 @@
-version: '3'
-
 services:
   mongo:
     restart: always
     container_name: quant-ux-mongo
-    image: mongo
+    # Pinned: the data in ./data was written by mongod 4.4.1. A major upgrade
+    # cannot open those files and needs a dump/restore chain instead.
+    image: mongo:${QUX_MONGO_VERSION:-4.4}
     volumes:
       - ./data:/data/db        # pth for the data to be stored and kept on your host machine is on the left side of the ":"
   qux-fe:
@@ -14,6 +14,10 @@ services:
     build:
       context: ..
       target: runtime-production
+      args:
+        # Same value "make build-prod" uses, so a compose triggered build does
+        # not silently bake the /quant-ux/ prefix into a localhost deployment.
+        QUX_PUBLIC_PATH: ${QUX_PUBLIC_PATH:-/}
     environment:
       - QUX_PROXY_URL=http://quant-ux-backend:8080        # this is the path the front end uses to talk tot he backend
       - QUX_AUTH=qux
@@ -28,7 +32,7 @@ services:
       - mongo
       - qux-be
     ports:
-      - 127.0.0.1:8082:8082        # only reachable via nginx
+      - 127.0.0.1:8082:8082        # localhost only; use 8082:8082 to expose it on the LAN
     depends_on:
       - qux-be
   qux-be:
@@ -50,12 +54,18 @@ services:
       - QUX_JWT_PASSWORD=${QUX_JWT_PASSWORD:-change-me}        # set real secret in docker/.env (gitignored)
       - QUX_IMAGE_FOLDER_USER=/app-data/qux-images        # this folder should mapped in the volume
       - QUX_IMAGE_FOLDER_APPS=/app-data/qux-image-apps        # this folder should mapped in the volume
-      - TZ=America/Chicago        # change to your timezone
+      - TZ=Europe/Vienna        # change to your timezone
       - QUX_AUTH_SERVICE=qux
       - QUX_KEYCLOAK_SERVER= # just the keycloak host & port
       - QUX_KEYCLOAK_REALM=
       - QUX_USER_ALLOW_SIGNUP=true # set the false to not allow users to signup
       - QUX_USER_ALLOWED_DOMAINS=* # comma separated list of domains, e.g. 'my-server.com' or '*' for all
+      # The image CMD is "java -jar qux-server.jar -Xmx2g ...": the -Xmx sits
+      # after -jar, so the JVM never sees it and sizes itself to 25% of the
+      # container limit (1.9G of the 7.6G VM). The remaining pretty printed
+      # endpoints (GET /rest/mouse/{appID}.json is ~200MB for a big study)
+      # need headroom; read by the JVM before any command line flag.
+      - JAVA_TOOL_OPTIONS=-Xmx3g
     depends_on:
       - mongo
   qux-ws:

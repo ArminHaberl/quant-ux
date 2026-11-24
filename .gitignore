@@ -26,6 +26,7 @@ ai.js
 
 # data
 docker/data
+docker/data.orig
 docker/quant-ux-data
 
 # secrets

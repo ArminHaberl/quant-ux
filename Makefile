@@ -1,7 +1,10 @@
 
 
 
-QUX_PUBLIC_PATH ?= /quant-ux/
+# The deployed site is served under /quant-ux/ (nginx strips the prefix), but
+# server/start.js serves dist/ at the root and the SPA calls /rest/ absolutely,
+# so a localhost build needs "/". Prod images pass QUX_PUBLIC_PATH=/quant-ux/.
+QUX_PUBLIC_PATH ?= /
 QUX_TEST_IMAGE ?= quant-ux-test
 
 
